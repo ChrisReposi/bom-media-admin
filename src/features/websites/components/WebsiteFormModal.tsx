@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type {
   CreateWebsitePayload,
+  DomainGroup,
   UpdateWebsitePayload,
   Website,
 } from "@/features/websites/websiteTypes";
@@ -21,6 +22,8 @@ type WebsiteFormValues = {
 type WebsiteFormModalProps = {
   open: boolean;
   website?: Website | null;
+  domainGroups: DomainGroup[];
+  isLoadingDomainGroups?: boolean;
   isSubmitting: boolean;
   onClose: () => void;
   onSubmit: (
@@ -37,7 +40,7 @@ const emptyForm: WebsiteFormValues = {
 };
 
 const adminInputClass = [
-  "h-10 border shadow-sm transition-colors",
+  "h-10 w-full border shadow-sm transition-colors",
   "bg-[#EFF4FB] text-[#15253e] placeholder:text-[#aaaaaa]!",
   "border-slate-300 hover:border-slate-400",
   "focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20",
@@ -47,6 +50,8 @@ const adminInputClass = [
 export function WebsiteFormModal({
   open,
   website,
+  domainGroups,
+  isLoadingDomainGroups = false,
   isSubmitting,
   onClose,
   onSubmit,
@@ -77,21 +82,43 @@ export function WebsiteFormModal({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const name = form.name.trim();
+    const slug = slugify(form.slug);
+    const selectedDomainGroupKey = form.domainGroupKey.trim().toLowerCase();
+    const originalDomainGroupKey =
+      website?.domainGroup?.key.trim().toLowerCase() ?? "";
 
-    await onSubmit({
-      name: form.name,
-      slug: form.slug,
+    const payload: CreateWebsitePayload | UpdateWebsitePayload = {
+      name,
+      slug,
       ...(form.defaultTitle.trim()
         ? { defaultTitle: form.defaultTitle.trim() }
         : {}),
       ...(form.defaultDescription.trim()
         ? { defaultDescription: form.defaultDescription.trim() }
         : {}),
-      ...(form.domainGroupKey.trim()
-        ? { domainGroupKey: form.domainGroupKey.trim().toLowerCase() }
-        : {}),
-    });
+    };
+
+    if (website) {
+      if (selectedDomainGroupKey !== originalDomainGroupKey) {
+        Object.assign(
+          payload,
+          selectedDomainGroupKey
+            ? { domainGroupKey: selectedDomainGroupKey }
+            : { domainGroupId: null },
+        );
+      }
+    } else if (selectedDomainGroupKey) {
+      Object.assign(payload, { domainGroupKey: selectedDomainGroupKey });
+    }
+
+    await onSubmit(payload);
   }
+
+  const selectedKey = form.domainGroupKey.trim().toLowerCase();
+  const selectedGroupInOptions = domainGroups.some(
+    (group) => group.key === selectedKey,
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -176,28 +203,39 @@ export function WebsiteFormModal({
             />
           </label>
           <label className="block text-sm font-medium text-(--admin-text-strong) md:col-span-2">
-            <span className="mb-2 block">Domain group key</span>
-            <Input
-              id="domainGroupKeyInput"
+            <span className="mb-2 block">Domain group</span>
+            <select
+              id="domainGroupKeySelect"
               className={adminInputClass}
-              placeholder="Tìm domain theo tên vd: SML"
+              disabled={isLoadingDomainGroups}
               value={form.domainGroupKey}
               onChange={(event) =>
                 setForm((value) => ({
                   ...value,
-                  domainGroupKey: event.target.value
-                    .trim()
-                    .toLowerCase()
-                    .replace(/[^a-z0-9-]+/g, "-")
-                    .replace(/^-+|-+$/g, "")
-                    .replace(/-{2,}/g, "-")
-                    .slice(0, 80),
+                  domainGroupKey: event.target.value,
                 }))
               }
-            />
+            >
+              <option value="">
+                {isLoadingDomainGroups
+                  ? "Đang tải domain groups..."
+                  : "Không dùng domain group"}
+              </option>
+              {!selectedGroupInOptions && selectedKey ? (
+                <option value={selectedKey}>
+                  Current group: {website?.domainGroup?.name ?? selectedKey} (
+                  {selectedKey})
+                </option>
+              ) : null}
+              {domainGroups.map((group) => (
+                <option key={group.id} value={group.key}>
+                  {group.name} ({group.key})
+                </option>
+              ))}
+            </select>
             <span className="mt-2 block text-xs font-normal text-(--admin-text-muted)">
-              Tùy chọn. Chỉ nhập key nhóm đã tồn tại, ví dụ: sml, demo-sites,
-              internal. Để trống nếu chưa tạo domain group.
+              Tùy chọn. Website có thể tạo không cần domain group. Nếu chọn
+              group, group đó phải tồn tại và đang ACTIVE.
             </span>
           </label>
           <div className="flex gap-2 md:col-span-2 mt-2">

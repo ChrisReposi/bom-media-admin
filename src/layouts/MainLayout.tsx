@@ -1,4 +1,11 @@
-import { Globe2, LayoutDashboard, LogOut, Settings, Video } from "lucide-react";
+import {
+  Globe2,
+  LayoutDashboard,
+  LogOut,
+  Network,
+  Settings,
+  Video,
+} from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { clearCredentials } from "@/features/auth/authSlice";
@@ -8,6 +15,7 @@ const navItems = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Videos", path: "/videos", icon: Video },
   { label: "Websites", path: "/websites", icon: Globe2 },
+  { label: "Domains", path: "/domains", icon: Network },
   { label: "Settings", path: "/settings", icon: Settings },
 ] as const;
 

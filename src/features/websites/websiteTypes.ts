@@ -13,6 +13,26 @@ export type WebsiteDomainGroup = {
   status?: DomainGroupStatus;
 };
 
+export type DomainGroup = {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  status: DomainGroupStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DomainGroupsListResponse = {
+  items: DomainGroup[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
 export type WebsiteDomain = {
   id: string;
   websiteId: string;
@@ -52,7 +72,7 @@ export type CreateWebsitePayload = {
   defaultTitle?: string;
   defaultDescription?: string;
   domainGroupKey?: string;
-  domainGroupId?: string;
+  domainGroupId?: string | null;
 };
 
 export type UpdateWebsitePayload = Partial<CreateWebsitePayload> & {

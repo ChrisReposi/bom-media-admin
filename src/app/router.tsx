@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 
 import { MainLayout } from "@/layouts/MainLayout";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { DomainsPage } from "@/pages/DomainsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { VideoDetailPage } from "@/pages/VideoDetailPage";
@@ -43,6 +44,10 @@ export const router = createBrowserRouter([
           {
             path: "/websites",
             element: <WebsitesPage />,
+          },
+          {
+            path: "/domains",
+            element: <DomainsPage />,
           },
           {
             path: "/settings",

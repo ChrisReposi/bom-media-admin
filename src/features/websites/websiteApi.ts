@@ -9,6 +9,8 @@ import type {
   CreateShareLinkResponse,
   CreateWebsiteDomainPayload,
   CreateWebsitePayload,
+  DomainGroupsListResponse,
+  DomainGroupStatus,
   ShareLinksListResponse,
   UpdateWebsiteDomainPayload,
   UpdateWebsitePayload,
@@ -19,6 +21,27 @@ import type {
 
 export function getWebsiteApiErrorMessage(error: unknown): string {
   return getApiErrorMessage(error);
+}
+
+export async function getDomainGroups(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: DomainGroupStatus;
+}): Promise<DomainGroupsListResponse> {
+  const response = await axiosClient.get<DomainGroupsListResponse>(
+    "/admin/domain-groups",
+    {
+      params: {
+        page: params?.page,
+        limit: params?.limit,
+        search: params?.search?.trim() || undefined,
+        status: params?.status,
+      },
+    },
+  );
+
+  return response.data;
 }
 
 export async function getWebsites(params?: {
@@ -67,9 +90,11 @@ export async function createWebsite(
     ...(payload.domainGroupKey?.trim()
       ? { domainGroupKey: payload.domainGroupKey.trim().toLowerCase() }
       : {}),
-    ...(payload.domainGroupId?.trim()
-      ? { domainGroupId: payload.domainGroupId.trim() }
-      : {}),
+    ...(payload.domainGroupId === null
+      ? { domainGroupId: null }
+      : payload.domainGroupId?.trim()
+        ? { domainGroupId: payload.domainGroupId.trim() }
+        : {}),
   });
 
   return response.data;
@@ -95,9 +120,11 @@ export async function updateWebsite(
     ...(payload.domainGroupKey?.trim()
       ? { domainGroupKey: payload.domainGroupKey.trim().toLowerCase() }
       : {}),
-    ...(payload.domainGroupId?.trim()
-      ? { domainGroupId: payload.domainGroupId.trim() }
-      : {}),
+    ...(payload.domainGroupId === null
+      ? { domainGroupId: null }
+      : payload.domainGroupId?.trim()
+        ? { domainGroupId: payload.domainGroupId.trim() }
+        : {}),
     ...(payload.status ? { status: payload.status } : {}),
   });
 

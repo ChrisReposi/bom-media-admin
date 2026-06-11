@@ -6,24 +6,29 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClaimCurrentDomainModal } from "@/features/websites/components/ClaimCurrentDomainModal";
+import {
+  assignDomainToWebsite,
+  getDomains,
+  unassignDomain,
+} from "@/features/domains/domainApi";
+import type { DomainPoolItem } from "@/features/domains/domainTypes";
 import { WebsiteCard } from "@/features/websites/components/WebsiteCard";
 import { WebsiteDomainPanel } from "@/features/websites/components/WebsiteDomainPanel";
 import { WebsiteEmptyState } from "@/features/websites/components/WebsiteEmptyState";
 import { WebsiteFormModal } from "@/features/websites/components/WebsiteFormModal";
 import { WebsiteSkeleton } from "@/features/websites/components/WebsiteSkeleton";
 import {
-  activateWebsiteDomain,
   claimCurrentWebsiteDomain,
   createWebsite,
-  createWebsiteDomain,
   disableWebsite,
-  disableWebsiteDomain,
+  getDomainGroups,
   getWebsiteApiErrorMessage,
   getWebsites,
   updateWebsite,
 } from "@/features/websites/websiteApi";
 import type {
   CreateWebsitePayload,
+  DomainGroup,
   UpdateWebsitePayload,
   Website,
   WebsitesListResponse,
@@ -43,6 +48,10 @@ const emptyFilters: WebsiteFilters = {
 
 export function WebsitesPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
+  const [domainGroups, setDomainGroups] = useState<DomainGroup[]>([]);
+  const [availableDomains, setAvailableDomains] = useState<DomainPoolItem[]>(
+    [],
+  );
   const [meta, setMeta] = useState<WebsitesListResponse["meta"] | null>(null);
   const [selectedWebsiteId, setSelectedWebsiteId] = useState("");
   const [editingWebsite, setEditingWebsite] = useState<Website | null>(null);
@@ -52,6 +61,9 @@ export function WebsitesPage() {
   const [isSubmittingWebsite, setIsSubmittingWebsite] = useState(false);
   const [isSubmittingDomain, setIsSubmittingDomain] = useState(false);
   const [isClaimingDomain, setIsClaimingDomain] = useState(false);
+  const [isLoadingDomainGroups, setIsLoadingDomainGroups] = useState(false);
+  const [isLoadingAvailableDomains, setIsLoadingAvailableDomains] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<WebsiteFilters>(emptyFilters);
   const [appliedFilters, setAppliedFilters] =
@@ -61,20 +73,6 @@ export function WebsitesPage() {
     () => websites.find((website) => website.id === selectedWebsiteId) ?? null,
     [selectedWebsiteId, websites],
   );
-
-  const selectedPrimaryDomain = useMemo(() => {
-    if (!selectedWebsite) {
-      return null;
-    }
-
-    return (
-      selectedWebsite.domains.find(
-        (domain) => domain.isPrimary && domain.status === "ACTIVE",
-      ) ??
-      selectedWebsite.domains.find((domain) => domain.status === "ACTIVE") ??
-      null
-    );
-  }, [selectedWebsite]);
 
   const fetchWebsites = useCallback(async () => {
     setIsLoading(true);
@@ -107,9 +105,51 @@ export function WebsitesPage() {
     }
   }, [appliedFilters]);
 
+  const fetchDomainGroups = useCallback(async () => {
+    setIsLoadingDomainGroups(true);
+
+    try {
+      const response = await getDomainGroups({
+        page: 1,
+        limit: 100,
+        status: "ACTIVE",
+      });
+      setDomainGroups(response.items);
+    } catch (fetchError) {
+      toast.error(getWebsiteApiErrorMessage(fetchError));
+    } finally {
+      setIsLoadingDomainGroups(false);
+    }
+  }, []);
+
+  const fetchAvailableDomains = useCallback(async () => {
+    setIsLoadingAvailableDomains(true);
+
+    try {
+      const response = await getDomains({
+        page: 1,
+        limit: 100,
+        usageStatus: "AVAILABLE",
+      });
+      setAvailableDomains(response.items);
+    } catch (fetchError) {
+      toast.error(getWebsiteApiErrorMessage(fetchError));
+    } finally {
+      setIsLoadingAvailableDomains(false);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchWebsites();
   }, [fetchWebsites]);
+
+  useEffect(() => {
+    void fetchDomainGroups();
+  }, [fetchDomainGroups]);
+
+  useEffect(() => {
+    void fetchAvailableDomains();
+  }, [fetchAvailableDomains]);
 
   function openCreateModal(): void {
     setEditingWebsite(null);
@@ -187,9 +227,9 @@ export function WebsitesPage() {
     }
   }
 
-  async function handleCreateDomain(payload: {
-    domain: string;
-    isPrimary: boolean;
+  async function handleAssignDomain(payload: {
+    domainId: string;
+    replaceExisting: boolean;
   }): Promise<void> {
     if (!selectedWebsite) {
       toast.error("Vui long chon website.");
@@ -199,12 +239,13 @@ export function WebsitesPage() {
     setIsSubmittingDomain(true);
 
     try {
-      await createWebsiteDomain(selectedWebsite.id, {
-        domain: payload.domain,
-        isPrimary: payload.isPrimary,
+      await assignDomainToWebsite(payload.domainId, {
+        websiteId: selectedWebsite.id,
+        replaceExisting: payload.replaceExisting,
       });
-      toast.success("Da them domain.");
+      toast.success("Da gan domain.");
       await fetchWebsites();
+      await fetchAvailableDomains();
     } catch (domainError) {
       toast.error(getWebsiteApiErrorMessage(domainError));
     } finally {
@@ -212,60 +253,22 @@ export function WebsitesPage() {
     }
   }
 
-  async function handleSetPrimaryDomain(domainId: string): Promise<void> {
+  async function handleUnassignDomain(domainId: string): Promise<void> {
     if (!selectedWebsite) {
+      return;
+    }
+
+    if (!window.confirm("Unassign domain nay?")) {
       return;
     }
 
     setIsSubmittingDomain(true);
 
     try {
-      await activateWebsiteDomain(selectedWebsite.id, domainId, {
-        isPrimary: true,
-      });
-      toast.success("Da cap nhat primary domain.");
+      await unassignDomain(domainId);
+      toast.success("Da go gan domain.");
       await fetchWebsites();
-    } catch (domainError) {
-      toast.error(getWebsiteApiErrorMessage(domainError));
-    } finally {
-      setIsSubmittingDomain(false);
-    }
-  }
-
-  async function handleDisableDomain(domainId: string): Promise<void> {
-    if (!selectedWebsite) {
-      return;
-    }
-
-    if (!window.confirm("Disable domain nay?")) {
-      return;
-    }
-
-    setIsSubmittingDomain(true);
-
-    try {
-      await disableWebsiteDomain(selectedWebsite.id, domainId);
-      toast.success("Da disable domain.");
-      await fetchWebsites();
-    } catch (domainError) {
-      toast.error(getWebsiteApiErrorMessage(domainError));
-    } finally {
-      setIsSubmittingDomain(false);
-    }
-  }
-
-  async function handleActivateDomain(domainId: string): Promise<void> {
-    if (!selectedWebsite) {
-      return;
-    }
-
-    setIsSubmittingDomain(true);
-
-    try {
-      await activateWebsiteDomain(selectedWebsite.id, domainId);
-
-      toast.success("Da active domain.");
-      await fetchWebsites();
+      await fetchAvailableDomains();
     } catch (domainError) {
       toast.error(getWebsiteApiErrorMessage(domainError));
     } finally {
@@ -289,6 +292,7 @@ export function WebsitesPage() {
       setIsClaimModalOpen(false);
       toast.success("Da claim current domain.");
       await fetchWebsites();
+      await fetchAvailableDomains();
     } catch (claimError) {
       toast.error(getWebsiteApiErrorMessage(claimError));
     } finally {
@@ -447,17 +451,19 @@ export function WebsitesPage() {
 
         <div className="space-y-4">
           <WebsiteDomainPanel
+            availableDomains={availableDomains}
+            isLoadingDomains={isLoadingAvailableDomains}
             isSubmitting={isSubmittingDomain}
             website={selectedWebsite}
-            onCreateDomain={handleCreateDomain}
-            onDisableDomain={handleDisableDomain}
-            onSetPrimary={handleSetPrimaryDomain}
-            onActivateDomain={handleActivateDomain}
+            onAssignDomain={handleAssignDomain}
+            onUnassignDomain={handleUnassignDomain}
           />
         </div>
       </div>
 
       <WebsiteFormModal
+        domainGroups={domainGroups}
+        isLoadingDomainGroups={isLoadingDomainGroups}
         isSubmitting={isSubmittingWebsite}
         open={isWebsiteModalOpen}
         website={editingWebsite}

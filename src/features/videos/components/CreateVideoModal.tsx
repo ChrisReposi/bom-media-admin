@@ -15,7 +15,14 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+} from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -128,6 +135,21 @@ function FieldError({ message }: { message?: string }) {
   }
 
   return <p className="text-sm text-(--admin-danger)">{message}</p>;
+}
+
+const adminSelectOptionStyle: CSSProperties = {
+  backgroundColor: "var(--admin-input-bg)",
+  color: "var(--admin-text-strong)",
+};
+
+function selectClass(hasError: boolean): string {
+  return cn(
+    "h-10 w-full rounded-md border px-3 text-sm shadow-sm outline-none transition-colors",
+    "border-[var(--admin-border)] bg-[var(--admin-input-bg)] text-[var(--admin-text-strong)]",
+    "hover:border-[var(--admin-border-strong)] focus-visible:ring-2 focus-visible:ring-[var(--admin-focus-ring)]",
+    "disabled:cursor-not-allowed disabled:opacity-60",
+    hasError && "border-[var(--admin-danger)] focus-visible:ring-red-100",
+  );
 }
 
 function fieldClass(hasError: boolean): string {
@@ -1099,15 +1121,20 @@ export function CreateVideoModal({
               </label>
               <select
                 id="video-status"
-                className={cn(
-                  "w-full rounded-md px-3",
-                  fieldClass(!!errors.status),
-                )}
+                className={selectClass(!!errors.status)}
+                style={{
+                  backgroundColor: "var(--admin-input-bg)",
+                  color: "var(--admin-text-strong)",
+                }}
                 aria-invalid={!!errors.status}
                 {...register("status")}
               >
                 {VIDEO_STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
+                  <option
+                    key={status}
+                    style={adminSelectOptionStyle}
+                    value={status}
+                  >
                     {statusLabels[status]}
                   </option>
                 ))}
