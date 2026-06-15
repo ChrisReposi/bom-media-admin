@@ -1,6 +1,11 @@
 export type VideoProvider = "MANUAL" | "BUNNY" | "MUX" | "CLOUDINARY";
 
-export type VideoSourceType = "UPLOAD" | "DIRECT_URL" | "EMBED" | "DB_BLOB";
+export type VideoSourceType =
+  | "UPLOAD"
+  | "DIRECT_URL"
+  | "EMBED"
+  | "DB_BLOB"
+  | "LOCAL_FILE";
 
 export type EmbedProvider =
   | "CLOUDINARY_PLAYER"
@@ -49,9 +54,41 @@ export type VideoAsset = {
     mimeType: string;
     sizeBytes: string;
   } | null;
+  localFileAsset?: {
+    mimeType: string;
+    sizeBytes: string;
+    checksumSha256?: string | null;
+    originalFilename?: string | null;
+  } | null;
+  localThumbnailAsset?: {
+    mimeType: string;
+    sizeBytes: string;
+    checksumSha256?: string | null;
+    originalFilename?: string | null;
+  } | null;
   binaryPlaybackUrl?: string | null;
+  localPlaybackUrl?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type VideoUploadSessionStatus =
+  | "ACTIVE"
+  | "COMPLETING"
+  | "COMPLETED"
+  | "ABORTED"
+  | "EXPIRED"
+  | "FAILED";
+
+export type VideoUploadSession = {
+  id: string;
+  status: VideoUploadSessionStatus;
+  totalBytes: number;
+  totalChunks: number;
+  chunkSizeBytes: number;
+  uploadedChunks: number;
+  uploadedChunkIndexes: number[];
+  expiresAt: string;
 };
 
 export type VideosListResponse = {
@@ -88,7 +125,7 @@ export type CreateVideoEmbedPayload = {
   status?: VideoStatus;
 };
 
-export type UploadVideoPayload = {
+export type UploadLocalVideoPayload = {
   title: string;
   description?: string;
   file: File;
@@ -100,16 +137,12 @@ export type UploadVideoPayload = {
   status?: VideoStatus;
 };
 
-export type UploadDatabaseVideoPayload = {
-  title: string;
-  description?: string;
-  file: File;
-  thumbnailUrl?: string;
-  thumbnailFile?: File;
-  durationSeconds?: number;
-  viewCount?: number;
-  publishedAt?: string;
-  status?: VideoStatus;
+export type UploadLocalVideoProgress = {
+  phase: "init" | "uploading" | "complete" | "canceling";
+  uploadId?: string;
+  uploadedChunks: number;
+  totalChunks: number;
+  percent: number;
 };
 
 export type ReplaceDatabaseVideoBinaryPayload = {
@@ -118,6 +151,10 @@ export type ReplaceDatabaseVideoBinaryPayload = {
   thumbnailFile?: File;
   durationSeconds?: number;
   status?: VideoStatus;
+};
+
+export type UpdateLocalVideoThumbnailPayload = {
+  thumbnailFile: File;
 };
 
 export type UpdateVideoPayload = {
@@ -129,4 +166,32 @@ export type UpdateVideoPayload = {
   viewCount?: number;
   publishedAt?: string | null;
   status?: VideoStatus;
+};
+
+export type PurgeVideoPayload = {
+  confirmVideoId: string;
+  deleteRemoteAsset?: boolean;
+};
+
+export type PurgeVideoResponse = {
+  message: string;
+  videoId?: string;
+  sourceType?: VideoSourceType | string;
+  status?: "PURGED" | string;
+  safety?: {
+    hadWebsiteAssignments?: boolean;
+    hadShareLinks?: boolean;
+  };
+  storage?: {
+    localVideoDeleteAttempted?: boolean;
+    localVideoDeleted?: boolean;
+    localThumbnailDeleteAttempted?: boolean;
+    localThumbnailDeleted?: boolean;
+    bytesReclaimed?: string;
+    orphanCleanupRequired?: boolean;
+  };
+  remote?: {
+    remoteAssetDeleteAttempted?: boolean;
+    remoteAssetDeleted?: boolean;
+  };
 };

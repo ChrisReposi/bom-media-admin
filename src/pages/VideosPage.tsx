@@ -1,12 +1,22 @@
 import {
+  AlertTriangle,
+  Ban,
   ChevronLeft,
   ChevronRight,
+  Loader2,
   Plus,
   RefreshCcw,
   Search,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -18,9 +28,9 @@ import { VideoCardSkeleton } from "@/features/videos/components/VideoCardSkeleto
 import { VideosEmptyState } from "@/features/videos/components/VideosEmptyState";
 import { VideosErrorState } from "@/features/videos/components/VideosErrorState";
 import {
-  deleteVideo,
   getApiErrorMessage,
   getVideos,
+  updateVideoStatus,
 } from "@/features/videos/videoApi";
 import {
   VIDEO_STATUS_OPTIONS,
@@ -30,6 +40,8 @@ import {
 } from "@/features/videos/videoTypes";
 
 const DEFAULT_VIDEO_STATUS_FILTER: VideoStatus = "READY";
+
+type StatusActionTarget = Extract<VideoStatus, "READY" | "DISABLED">;
 
 const videoStatusLabels: Record<VideoStatus, string> = {
   DISABLED: "Đã tắt",
@@ -59,11 +71,20 @@ export function VideosPage() {
   const [isRefetching, setIsRefetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
+  const [statusActionVideo, setStatusActionVideo] = useState<VideoAsset | null>(
+    null,
+  );
+  const [statusActionTarget, setStatusActionTarget] =
+    useState<StatusActionTarget | null>(null);
+  const [statusUpdatingVideoId, setStatusUpdatingVideoId] = useState<
+    string | null
+  >(null);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const statusModalRef = useRef<HTMLDivElement | null>(null);
+  const statusCancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const fetchVideos = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -108,6 +129,27 @@ export function VideosPage() {
     void fetchVideos();
   }, [fetchVideos]);
 
+  const closeStatusActionModal = useCallback(() => {
+    if (statusUpdatingVideoId !== null) {
+      return;
+    }
+
+    setStatusActionVideo(null);
+    setStatusActionTarget(null);
+  }, [statusUpdatingVideoId]);
+
+  useEffect(() => {
+    if (!statusActionVideo || !statusActionTarget) {
+      return;
+    }
+
+    const focusTimeout = window.setTimeout(() => {
+      statusCancelButtonRef.current?.focus();
+    }, 0);
+
+    return () => window.clearTimeout(focusTimeout);
+  }, [statusActionVideo, statusActionTarget]);
+
   function handleStatusChange(nextStatus: VideoStatus): void {
     if (nextStatus === statusFilter) {
       return;
@@ -141,17 +183,80 @@ export function VideosPage() {
     setPage(1);
   }
 
-  async function handleDelete(video: VideoAsset): Promise<void> {
-    setDeletingVideoId(video.id);
+  function handleRequestStatusToggle(video: VideoAsset): void {
+    if (video.status === "READY") {
+      setStatusActionVideo(video);
+      setStatusActionTarget("DISABLED");
+      return;
+    }
 
+    if (video.status === "DISABLED") {
+      setStatusActionVideo(video);
+      setStatusActionTarget("READY");
+    }
+  }
+
+  async function handleConfirmStatusChange(): Promise<void> {
+    if (!statusActionVideo || !statusActionTarget) {
+      return;
+    }
+
+    const selectedVideo = statusActionVideo;
+    const nextStatus = statusActionTarget;
+
+    setStatusUpdatingVideoId(selectedVideo.id);
     try {
-      await deleteVideo(video.id);
-      toast.success("Đã tắt video.");
+      await updateVideoStatus(selectedVideo.id, nextStatus);
+      toast.success(
+        nextStatus === "DISABLED"
+          ? "Đã vô hiệu hoá video."
+          : "Đã kích hoạt lại video.",
+      );
+      setStatusActionVideo(null);
+      setStatusActionTarget(null);
       await fetchVideos({ silent: true });
-    } catch (deleteError) {
-      toast.error(getApiErrorMessage(deleteError));
+    } catch (statusError) {
+      toast.error(getApiErrorMessage(statusError));
     } finally {
-      setDeletingVideoId(null);
+      setStatusUpdatingVideoId(null);
+    }
+  }
+
+  function handleStatusModalKeyDown(
+    event: KeyboardEvent<HTMLDivElement>,
+  ): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeStatusActionModal();
+      return;
+    }
+
+    if (event.key !== "Tab" || !statusModalRef.current) {
+      return;
+    }
+
+    const focusableElements = Array.from(
+      statusModalRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+
+    if (focusableElements.length === 0) {
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
+      return;
+    }
+
+    if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
     }
   }
 
@@ -169,6 +274,19 @@ export function VideosPage() {
     isLoading ||
     isRefetching ||
     (trimmedSearchInput === appliedSearch && page === 1);
+  const isStatusActionDisable = statusActionTarget === "DISABLED";
+  const isStatusActionSubmitting =
+    statusActionVideo !== null &&
+    statusUpdatingVideoId === statusActionVideo.id;
+  const statusActionTitle = isStatusActionDisable
+    ? "Vô hiệu hoá video?"
+    : "Kích hoạt lại video?";
+  const statusActionDescription = isStatusActionDisable
+    ? "Video này sẽ được chuyển sang trạng thái DISABLED. Thao tác này chỉ ngừng sử dụng video trong hệ thống, không xoá metadata và không xoá file khỏi server storage/NVMe. Nếu muốn giải phóng dung lượng, hãy dùng Purge Permanently ở trang chi tiết video."
+    : "Video này sẽ được chuyển lại trạng thái READY. Nếu video đang được gán vào website hoặc share link hợp lệ, video có thể hiển thị lại cho người xem theo quyền truy cập tương ứng.";
+  const statusActionConfirmLabel = isStatusActionDisable
+    ? "Vô hiệu hoá"
+    : "Kích hoạt lại";
 
   return (
     <section className="space-y-6">
@@ -301,15 +419,118 @@ export function VideosPage() {
             <VideoCard
               key={video.id}
               video={video}
-              isDeleting={deletingVideoId === video.id}
-              onDelete={(selectedVideo) => void handleDelete(selectedVideo)}
+              isStatusUpdating={statusUpdatingVideoId === video.id}
               onOpen={(selectedVideo) =>
                 navigate(`/videos/${selectedVideo.id}`)
               }
+              onRequestStatusToggle={handleRequestStatusToggle}
             />
           ))}
         </div>
       )}
+
+      {statusActionVideo && statusActionTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeStatusActionModal();
+            }
+          }}
+        >
+          <div
+            ref={statusModalRef}
+            aria-describedby="video-status-modal-description"
+            aria-labelledby="video-status-modal-title"
+            aria-modal="true"
+            className="relative w-full max-w-lg rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-(--admin-shadow)"
+            role="dialog"
+            onKeyDown={handleStatusModalKeyDown}
+          >
+            <Button
+              aria-label="Đóng"
+              className="absolute right-3 top-3 text-(--admin-text-muted)"
+              disabled={isStatusActionSubmitting}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+              onClick={closeStatusActionModal}
+            >
+              <X className="size-4" />
+            </Button>
+
+            <div className="flex gap-3 pr-8">
+              <div
+                className={[
+                  "flex size-10 shrink-0 items-center justify-center rounded-full",
+                  isStatusActionDisable
+                    ? "bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]"
+                    : "bg-[var(--admin-primary-soft)] text-[var(--admin-primary)]",
+                ].join(" ")}
+              >
+                {isStatusActionDisable ? (
+                  <Ban className="size-5" />
+                ) : (
+                  <RefreshCcw className="size-5" />
+                )}
+              </div>
+
+              <div className="min-w-0 space-y-2">
+                <h2
+                  className="text-lg font-semibold text-(--admin-text-strong)"
+                  id="video-status-modal-title"
+                >
+                  {statusActionTitle}
+                </h2>
+                <p className="break-words text-sm font-medium text-(--admin-text-strong)">
+                  {statusActionVideo.title}
+                </p>
+                <p
+                  className="text-sm leading-6 text-(--admin-text)"
+                  id="video-status-modal-description"
+                >
+                  {statusActionDescription}
+                </p>
+
+                {isStatusActionDisable ? (
+                  <div className="flex gap-2 rounded-lg border border-[var(--admin-danger-soft)] bg-[var(--admin-danger-soft)]/45 p-3 text-sm text-(--admin-text)">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--admin-danger)]" />
+                    <p>
+                      Disable không xoá file khỏi storage. Để giải phóng dung
+                      lượng NVMe, mở trang chi tiết video và dùng Purge
+                      Permanently.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                ref={statusCancelButtonRef}
+                disabled={isStatusActionSubmitting}
+                type="button"
+                variant="outline"
+                onClick={closeStatusActionModal}
+              >
+                Huỷ
+              </Button>
+              <Button
+                disabled={isStatusActionSubmitting}
+                type="button"
+                variant={isStatusActionDisable ? "destructive" : "default"}
+                onClick={() => void handleConfirmStatusChange()}
+              >
+                {isStatusActionSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
+                {statusActionConfirmLabel}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <CreateVideoModal
         open={modalOpen}

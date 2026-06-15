@@ -1,4 +1,4 @@
-import { Clipboard, Pencil } from "lucide-react";
+import { Clipboard, Pencil, Server } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -26,11 +26,13 @@ const statusLabels: Record<VideoStatus, string> = {
 export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
   const isEmbedVideo = video.sourceType === "EMBED" || Boolean(video.embedUrl);
   const isDatabaseVideo = video.sourceType === "DB_BLOB";
-  const playableUrl = isDatabaseVideo
-    ? null
-    : isEmbedVideo
-      ? video.embedUrl
-      : video.playbackUrl;
+  const isLocalFileVideo = video.sourceType === "LOCAL_FILE";
+  const playableUrl =
+    isDatabaseVideo || isLocalFileVideo
+      ? null
+      : isEmbedVideo
+        ? video.embedUrl
+        : video.playbackUrl;
 
   async function copyPlayableUrl(): Promise<void> {
     if (!playableUrl) {
@@ -70,9 +72,11 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
           value={
             isDatabaseVideo
               ? "Database blob"
-              : isEmbedVideo
-                ? "Embed"
-                : (video.sourceType ?? "Direct URL")
+              : isLocalFileVideo
+                ? "Local server file"
+                : isEmbedVideo
+                  ? "Embed"
+                  : (video.sourceType ?? "Direct URL")
           }
         />
         {video.binaryAsset ? (
@@ -87,6 +91,33 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
               value={formatBytes(video.binaryAsset.sizeBytes)}
             />
           </>
+        ) : null}
+        {video.localFileAsset ? (
+          <>
+            <InfoRow
+              label="Local file MIME"
+              value={video.localFileAsset.mimeType}
+              breakAll
+            />
+            <InfoRow
+              label="Local file size"
+              value={formatBytes(video.localFileAsset.sizeBytes)}
+            />
+            <InfoRow
+              label="Original filename"
+              value={video.localFileAsset.originalFilename ?? "Chưa có"}
+              breakAll
+            />
+          </>
+        ) : null}
+        {video.localThumbnailAsset ? (
+          <InfoRow
+            label="Local thumbnail"
+            value={`${video.localThumbnailAsset.mimeType} · ${formatBytes(
+              video.localThumbnailAsset.sizeBytes,
+            )}`}
+            breakAll
+          />
         ) : null}
         <InfoRow label="Status" value={statusLabels[video.status]} />
         <InfoRow
@@ -109,9 +140,11 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-text-muted)]">
               {isDatabaseVideo
                 ? "Database playback"
-                : isEmbedVideo
-                  ? "Embed URL"
-                  : "Playback URL"}
+                : isLocalFileVideo
+                  ? "Server storage playback"
+                  : isEmbedVideo
+                    ? "Embed URL"
+                    : "Playback URL"}
             </p>
             <Button
               aria-label={
@@ -130,9 +163,21 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
           <p className="break-all rounded-md bg-[var(--admin-surface-alt)] px-3 py-2 text-sm text-[var(--admin-text)]">
             {isDatabaseVideo
               ? "Stored in the database. Admin preview uses the protected admin API; share-link viewers use a token-protected public binary endpoint."
-              : playableUrl || "Chưa có URL phát video"}
+              : isLocalFileVideo
+                ? "Stored on private server storage. Admin preview uses the protected admin API; share-link viewers use a token-protected public media endpoint."
+                : playableUrl || "Chưa có URL phát video"}
           </p>
         </div>
+
+        {isLocalFileVideo ? (
+          <div className="flex gap-3 rounded-md border border-[var(--admin-border)] bg-[var(--admin-surface-alt)] px-3 py-2 text-sm text-[var(--admin-text)]">
+            <Server className="mt-0.5 size-4 shrink-0 text-[var(--admin-primary)]" />
+            <p>
+              Storage keys and absolute server paths are intentionally hidden
+              from the Admin Web.
+            </p>
+          </div>
+        ) : null}
 
         <InfoRow
           label="Thumbnail URL"

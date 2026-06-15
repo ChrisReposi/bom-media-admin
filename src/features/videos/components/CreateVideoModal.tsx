@@ -1,18 +1,16 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-  AlertTriangle,
   CalendarClock,
   CheckCircle2,
   Clock,
   Code2,
-  Database,
   FileVideo,
   ImageOff,
   ImagePlus,
   Link2,
   Loader2,
+  Server,
   Sparkles,
-  Upload,
   X,
 } from "lucide-react";
 import {
@@ -31,13 +29,13 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import {
+  cancelLocalVideoUpload,
   createVideoEmbed,
   createVideoEmbedWithThumbnail,
   createVideoManual,
   createVideoManualWithThumbnail,
   getApiErrorMessage,
-  uploadDatabaseVideo,
-  uploadVideo,
+  uploadLocalVideo,
 } from "../videoApi";
 import {
   getDefaultThumbnailUrlFromPlaybackUrl,
@@ -49,7 +47,11 @@ import {
 } from "../videoDateUtils";
 import { extractIframeSrc, isSafePreviewEmbedUrl } from "../videoEmbedUtils";
 import { createVideoSchema, type CreateVideoFormValues } from "../videoSchemas";
-import { VIDEO_STATUS_OPTIONS, type VideoStatus } from "../videoTypes";
+import {
+  VIDEO_STATUS_OPTIONS,
+  type UploadLocalVideoProgress,
+  type VideoStatus,
+} from "../videoTypes";
 
 type CreateVideoModalProps = {
   open: boolean;
@@ -91,7 +93,7 @@ const createVideoResolver = zodResolver(
 ) as unknown as Resolver<CreateVideoFormValues>;
 
 const defaultValues: CreateVideoFormValues = {
-  mode: "upload",
+  mode: "local-upload",
   title: "",
   description: "",
   playbackUrl: "",
@@ -103,9 +105,6 @@ const defaultValues: CreateVideoFormValues = {
   status: "READY",
   file: undefined,
 };
-
-const isDatabaseUploadEnabled =
-  import.meta.env.VITE_VIDEO_DB_UPLOAD_ENABLED === "true";
 
 const statusLabels: Record<VideoStatus, string> = {
   DISABLED: "Đã tắt",
@@ -268,7 +267,7 @@ function getSourceStatusClass(state: SourceConfirmState): string {
   return "border-(--admin-border) bg-(--admin-surface-alt) text-(--admin-text)";
 }
 
-function buildCloudinaryPlayerThumbnailUrl(embedUrl: string): string | null {
+function buildPlayerEmbedThumbnailUrl(embedUrl: string): string | null {
   try {
     const url = new URL(embedUrl);
     const cloudName = url.searchParams.get("cloud_name")?.trim();
@@ -327,12 +326,12 @@ function getEmbedThumbnailCandidate(embedUrl: string): {
     const host = url.hostname.toLowerCase();
 
     if (host === "player.cloudinary.com") {
-      const thumbnailUrl = buildCloudinaryPlayerThumbnailUrl(embedUrl);
+      const thumbnailUrl = buildPlayerEmbedThumbnailUrl(embedUrl);
       return {
         thumbnailUrl,
         note: thumbnailUrl
-          ? "Thumbnail tự động từ Cloudinary Player"
-          : "Cloudinary Player không đủ metadata để tạo thumbnail.",
+          ? "Thumbnail tự động từ provider embed"
+          : "Provider embed không đủ metadata để tạo thumbnail.",
       };
     }
 
@@ -508,8 +507,11 @@ export function CreateVideoModal({
   const [showManualDuration, setShowManualDuration] = useState(false);
   const [showManualThumbnail, setShowManualThumbnail] = useState(false);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const [localUploadProgress, setLocalUploadProgress] =
+    useState<UploadLocalVideoProgress | null>(null);
   const objectUrlsRef = useRef(new Set<string>());
   const previousSourceKeyRef = useRef("");
+  const localUploadAbortControllerRef = useRef<AbortController | null>(null);
 
   const {
     formState: { errors, isSubmitting },
@@ -544,6 +546,13 @@ export function CreateVideoModal({
   const confirmedEmbedPreviewUrl = isCurrentSourceConfirmed
     ? extractIframeSrc(embedCodeOrUrl)
     : null;
+  const isLocalUploadSubmitting =
+    localUploadProgress !== null &&
+    (localUploadProgress.phase === "init" ||
+      localUploadProgress.phase === "uploading" ||
+      localUploadProgress.phase === "complete" ||
+      localUploadProgress.phase === "canceling");
+  const isBusy = isSubmitting || isLocalUploadSubmitting;
 
   function createPreviewObjectUrl(blob: Blob): string {
     const objectUrl = URL.createObjectURL(blob);
@@ -567,6 +576,7 @@ export function CreateVideoModal({
     setShowManualDuration(false);
     setShowManualThumbnail(false);
     setThumbnailFailed(false);
+    setLocalUploadProgress(null);
     setValue("durationSeconds", undefined, {
       shouldDirty: true,
       shouldValidate: false,
@@ -583,7 +593,7 @@ export function CreateVideoModal({
     }
 
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape" && !isSubmitting) {
+      if (event.key === "Escape" && !isBusy) {
         onOpenChange(false);
       }
     }
@@ -596,7 +606,7 @@ export function CreateVideoModal({
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [isSubmitting, onOpenChange, open]);
+  }, [isBusy, onOpenChange, open]);
 
   useEffect(() => {
     if (!open) {
@@ -659,9 +669,9 @@ export function CreateVideoModal({
       width: metadata.width ?? capturedThumbnail?.width ?? null,
       height: metadata.height ?? capturedThumbnail?.height ?? null,
       providerNote: cloudinaryThumbnailUrl
-        ? "Thumbnail tự động từ Cloudinary"
+        ? "Thumbnail tự động từ playback URL"
         : capturedThumbnail
-          ? "Đã chụp frame. Thumbnail này sẽ upload lên Cloudinary khi tạo video."
+          ? "Đã chụp frame. Thumbnail này sẽ được gửi lên backend để lưu theo cấu hình hiện tại."
           : "Không tìm thấy thumbnail tự động.",
       durationSource: metadata.durationSeconds === null ? null : "auto",
       thumbnailSource:
@@ -722,7 +732,7 @@ export function CreateVideoModal({
         width: metadata.width ?? capturedThumbnail?.width ?? null,
         height: metadata.height ?? capturedThumbnail?.height ?? null,
         providerNote: capturedThumbnail
-          ? "Đã chụp frame. Thumbnail này sẽ upload lên Cloudinary khi tạo video."
+          ? "Đã chụp frame. Thumbnail này sẽ lưu trên server storage khi tạo video."
           : "Không chụp được thumbnail tự động.",
         durationSource: metadata.durationSeconds === null ? null : "auto",
         thumbnailSource: capturedThumbnail ? "auto" : null,
@@ -842,13 +852,47 @@ export function CreateVideoModal({
       thumbnailUrl: null,
       thumbnailObjectUrl: objectUrl,
       thumbnailFile: file,
-      providerNote: "Ảnh thumbnail này sẽ upload lên Cloudinary khi tạo video.",
+      providerNote:
+        mode === "local-upload"
+          ? "Ảnh thumbnail này sẽ lưu trên server storage khi tạo video."
+          : "Ảnh thumbnail sẽ được gửi lên backend để lưu theo cấu hình hiện tại.",
       thumbnailSource: "manual-file",
     }));
     setValue("thumbnailUrl", "", {
       shouldDirty: true,
       shouldValidate: true,
     });
+  }
+
+  async function handleCancelLocalUpload(): Promise<void> {
+    const currentProgress = localUploadProgress;
+    const uploadId = currentProgress?.uploadId;
+
+    localUploadAbortControllerRef.current?.abort();
+
+    if (!currentProgress) {
+      return;
+    }
+
+    setLocalUploadProgress({
+      ...currentProgress,
+      phase: "canceling",
+    });
+
+    try {
+      if (uploadId) {
+        await cancelLocalVideoUpload(uploadId);
+      }
+
+      toast.info("Đã hủy upload server storage.");
+    } catch {
+      toast.warning(
+        "Đã hủy upload trong trình duyệt. Không thể xác nhận cleanup trên server.",
+      );
+    } finally {
+      localUploadAbortControllerRef.current = null;
+      setLocalUploadProgress(null);
+    }
   }
 
   const onSubmit = handleSubmit(async (values) => {
@@ -917,51 +961,41 @@ export function CreateVideoModal({
         }
 
         toast.success("Đã tạo video nhúng.");
-      } else if (values.mode === "db-upload") {
-        if (!isDatabaseUploadEnabled) {
-          toast.error("Database video upload is not enabled.");
-          return;
-        }
-
+      } else if (values.mode === "local-upload") {
         const file = values.file?.item(0);
         if (!file) {
           toast.error("Vui lòng chọn file video.");
           return;
         }
 
-        await uploadDatabaseVideo({
-          title: values.title,
-          file,
-          status,
-          ...(description ? { description } : {}),
-          ...(thumbnailUrlValue ? { thumbnailUrl: thumbnailUrlValue } : {}),
-          ...(thumbnailFileValue ? { thumbnailFile: thumbnailFileValue } : {}),
-          ...(durationSeconds !== undefined ? { durationSeconds } : {}),
-          ...(viewCount !== undefined ? { viewCount } : {}),
-          ...(publishedAt ? { publishedAt } : {}),
-        });
+        const abortController = new AbortController();
+        localUploadAbortControllerRef.current = abortController;
 
-        toast.success("Đã lưu video vào database.");
+        await uploadLocalVideo(
+          {
+            title: values.title,
+            file,
+            status,
+            ...(description ? { description } : {}),
+            ...(thumbnailUrlValue ? { thumbnailUrl: thumbnailUrlValue } : {}),
+            ...(thumbnailFileValue
+              ? { thumbnailFile: thumbnailFileValue }
+              : {}),
+            ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+            ...(viewCount !== undefined ? { viewCount } : {}),
+            ...(publishedAt ? { publishedAt } : {}),
+          },
+          {
+            signal: abortController.signal,
+            onProgress: setLocalUploadProgress,
+          },
+        );
+
+        localUploadAbortControllerRef.current = null;
+        setLocalUploadProgress(null);
+        toast.success("Đã tải video lên server storage.");
       } else {
-        const file = values.file?.item(0);
-        if (!file) {
-          toast.error("Vui lòng chọn file video.");
-          return;
-        }
-
-        await uploadVideo({
-          title: values.title,
-          file,
-          status,
-          ...(description ? { description } : {}),
-          ...(thumbnailUrlValue ? { thumbnailUrl: thumbnailUrlValue } : {}),
-          ...(thumbnailFileValue ? { thumbnailFile: thumbnailFileValue } : {}),
-          ...(durationSeconds !== undefined ? { durationSeconds } : {}),
-          ...(viewCount !== undefined ? { viewCount } : {}),
-          ...(publishedAt ? { publishedAt } : {}),
-        });
-
-        toast.success("Đã tải video lên Cloudinary.");
+        throw new Error("Unsupported create video mode.");
       }
 
       reset(defaultValues);
@@ -970,6 +1004,13 @@ export function CreateVideoModal({
       onOpenChange(false);
       onCreated();
     } catch (error) {
+      localUploadAbortControllerRef.current = null;
+      setLocalUploadProgress(null);
+
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
       toast.error(getApiErrorMessage(error));
     }
   });
@@ -992,7 +1033,7 @@ export function CreateVideoModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/54 px-4 py-6 backdrop-blur-sm"
       role="dialog"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !isSubmitting) {
+        if (event.target === event.currentTarget && !isBusy) {
           onOpenChange(false);
         }
       }}
@@ -1011,7 +1052,7 @@ export function CreateVideoModal({
           <button
             aria-label="Đóng modal thêm video"
             className="flex size-9 items-center justify-center rounded-md text-(--admin-text) transition hover:bg-(--admin-surface-alt) hover:text-(--admin-text-strong)"
-            disabled={isSubmitting}
+            disabled={isBusy}
             type="button"
             onClick={() => onOpenChange(false)}
           >
@@ -1020,19 +1061,20 @@ export function CreateVideoModal({
         </div>
 
         <form className="space-y-5 px-5 py-5" noValidate onSubmit={onSubmit}>
-          <div className="grid gap-2 rounded-lg bg-(--admin-surface-alt) p-1 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 rounded-lg bg-(--admin-surface-alt) p-1 sm:grid-cols-3">
             <button
               className={cn(
                 "flex h-10 items-center justify-center gap-2 rounded-md text-sm font-medium transition",
-                mode === "upload"
+                mode === "local-upload"
                   ? "bg-(--admin-surface) text-(--admin-primary) shadow-sm"
                   : "text-(--admin-text) hover:text-(--admin-text-strong)",
               )}
+              disabled={isBusy}
               type="button"
-              onClick={() => setValue("mode", "upload")}
+              onClick={() => setValue("mode", "local-upload")}
             >
-              <Upload className="size-4" />
-              Upload
+              <Server className="size-4" />
+              Server
             </button>
 
             <button
@@ -1042,6 +1084,7 @@ export function CreateVideoModal({
                   ? "bg-(--admin-surface) text-(--admin-primary) shadow-sm"
                   : "text-(--admin-text) hover:text-(--admin-text-strong)",
               )}
+              disabled={isBusy}
               type="button"
               onClick={() => setValue("mode", "manual")}
             >
@@ -1056,39 +1099,19 @@ export function CreateVideoModal({
                   ? "bg-(--admin-surface) text-(--admin-primary) shadow-sm"
                   : "text-(--admin-text) hover:text-(--admin-text-strong)",
               )}
+              disabled={isBusy}
               type="button"
               onClick={() => setValue("mode", "embed")}
             >
               <Code2 className="size-4" />
               Embed Code
             </button>
-
-            <button
-              className={cn(
-                "flex h-10 items-center justify-center gap-2 rounded-md text-sm font-medium transition",
-                mode === "db-upload"
-                  ? "bg-(--admin-surface) text-(--admin-primary) shadow-sm"
-                  : "text-(--admin-text) hover:text-(--admin-text-strong)",
-              )}
-              disabled={!isDatabaseUploadEnabled}
-              title={
-                isDatabaseUploadEnabled
-                  ? undefined
-                  : "Database video upload is disabled."
-              }
-              type="button"
-              onClick={() => setValue("mode", "db-upload")}
-            >
-              <Database className="size-4" />
-              Upload DB
-            </button>
           </div>
 
-          {!isDatabaseUploadEnabled ? (
-            <p className="rounded-lg border border-(--admin-border) bg-(--admin-surface-alt) px-3 py-2 text-xs text-(--admin-text-muted)">
-              Database upload is disabled. Set VITE_VIDEO_DB_UPLOAD_ENABLED=true
-              in Admin Web and VIDEO_DB_STORAGE_ENABLED=true in the API to
-              enable the small-file fallback.
+          {mode === "local-upload" ? (
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+              Preferred production path: video bytes and thumbnail files are
+              stored in private server storage. MySQL stores metadata only.
             </p>
           ) : null}
 
@@ -1175,7 +1198,7 @@ export function CreateVideoModal({
                   </div>
 
                   <Button
-                    disabled={!canConfirmSource || isSubmitting}
+                    disabled={!canConfirmSource || isBusy}
                     type="button"
                     variant="outline"
                     onClick={() => void handleConfirmSource()}
@@ -1236,29 +1259,26 @@ export function CreateVideoModal({
                       className="mb-2 block text-sm font-medium text-(--admin-text-strong)"
                       htmlFor="video-file"
                     >
-                      {mode === "db-upload"
-                        ? "Small database video file"
-                        : "File video"}
+                      Server storage video file
                     </label>
                     <Input
                       id="video-file"
                       type="file"
                       accept="video/*"
                       className={fieldClass(!!errors.file)}
+                      disabled={isBusy}
                       aria-invalid={!!errors.file}
                       {...register("file")}
                     />
                     <FieldError message={errors.file?.message} />
 
-                    {mode === "db-upload" ? (
-                      <div className="mt-3 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                        <p>
-                          Chỉ dùng cho file nhỏ. Không khuyến nghị cho
-                          production video lớn.
-                        </p>
-                      </div>
-                    ) : null}
+                    <div className="mt-3 flex gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                      <Server className="mt-0.5 size-4 shrink-0" />
+                      <p>
+                        Upload sẽ được chia thành nhiều chunk tuần tự, sau đó
+                        backend merge vào private server storage.
+                      </p>
+                    </div>
 
                     {selectedFile ? (
                       <div className="mt-3 rounded-lg border border-(--admin-border) bg-(--admin-surface) p-3">
@@ -1358,8 +1378,9 @@ export function CreateVideoModal({
                         Thumbnail
                       </h3>
                       <p className="mt-1 text-xs text-(--admin-text-muted)">
-                        URL http/https được lưu trực tiếp; file ảnh local sẽ
-                        upload Cloudinary khi tạo video.
+                        {mode === "local-upload"
+                          ? "URL http/https được lưu trực tiếp; file ảnh sẽ lưu trên server storage khi tạo video."
+                          : "URL http/https được lưu trực tiếp; file ảnh sẽ được gửi lên backend để lưu theo cấu hình hiện tại."}
                       </p>
                     </div>
                     <ImagePlus className="size-5 text-(--admin-primary)" />
@@ -1437,8 +1458,10 @@ export function CreateVideoModal({
                   {!sourceMetadata.thumbnailUrl &&
                   sourceMetadata.thumbnailObjectUrl ? (
                     <p className="mt-2 text-xs text-(--admin-text-muted)">
-                      Thumbnail frame sẽ được gửi dưới dạng file ảnh và upload
-                      Cloudinary khi bấm tạo video.
+                      Thumbnail frame sẽ được gửi dưới dạng file ảnh và lưu
+                      {mode === "local-upload"
+                        ? " lên server storage khi bấm tạo video."
+                        : " theo cấu hình backend hiện tại khi bấm tạo video."}
                     </p>
                   ) : null}
 
@@ -1476,8 +1499,9 @@ export function CreateVideoModal({
                           onChange={handleManualThumbnailFileChange}
                         />
                         <p className="mt-2 text-xs text-(--admin-text-muted)">
-                          JPG, PNG hoặc WebP sẽ được upload lên Cloudinary từ
-                          backend. Không lưu blob URL hoặc data URL vào DB.
+                          {mode === "local-upload"
+                            ? "JPG, PNG hoặc WebP sẽ lưu trên private server storage. Không lưu blob URL hoặc data URL vào DB."
+                            : "JPG, PNG hoặc WebP sẽ được gửi lên backend để lưu theo cấu hình hiện tại. Không lưu blob URL hoặc data URL vào DB."}
                         </p>
                       </div>
 
@@ -1643,9 +1667,60 @@ export function CreateVideoModal({
             </div>
           </div>
 
+          {localUploadProgress ? (
+            <div className="rounded-lg border border-(--admin-border) bg-(--admin-surface-alt) p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-(--admin-text-strong)">
+                    Server storage upload
+                  </p>
+                  <p className="mt-1 text-xs text-(--admin-text-muted)">
+                    {localUploadProgress.phase === "init"
+                      ? "Đang tạo upload session..."
+                      : localUploadProgress.phase === "complete"
+                        ? "Đang hoàn tất và merge file trên server..."
+                        : localUploadProgress.phase === "canceling"
+                          ? "Đang hủy upload..."
+                          : `Đã upload ${localUploadProgress.uploadedChunks}/${localUploadProgress.totalChunks} chunk.`}
+                  </p>
+                </div>
+
+                <Button
+                  disabled={localUploadProgress.phase === "canceling"}
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCancelLocalUpload()}
+                >
+                  {localUploadProgress.phase === "canceling" ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <X className="size-4" />
+                  )}
+                  Hủy upload
+                </Button>
+              </div>
+
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--admin-border)]">
+                <div
+                  className="h-full rounded-full bg-[var(--admin-primary)] transition-all"
+                  style={{
+                    width: `${Math.min(
+                      Math.max(localUploadProgress.percent, 0),
+                      100,
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              <p className="mt-2 text-right text-xs font-medium text-(--admin-text)">
+                {Math.min(Math.max(localUploadProgress.percent, 0), 100)}%
+              </p>
+            </div>
+          ) : null}
+
           <div className="flex flex-col-reverse gap-3 border-t border-(--admin-border) pt-5 sm:flex-row sm:justify-end">
             <Button
-              disabled={isSubmitting}
+              disabled={isBusy}
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
@@ -1653,25 +1728,21 @@ export function CreateVideoModal({
               Hủy
             </Button>
 
-            <Button disabled={isSubmitting} type="submit">
-              {isSubmitting ? (
+            <Button disabled={isBusy} type="submit">
+              {isBusy ? (
                 <Loader2 className="size-4 animate-spin" />
-              ) : mode === "upload" ? (
-                <Upload className="size-4" />
-              ) : mode === "db-upload" ? (
-                <Database className="size-4" />
+              ) : mode === "local-upload" ? (
+                <Server className="size-4" />
               ) : mode === "embed" ? (
                 <Code2 className="size-4" />
               ) : (
                 <Link2 className="size-4" />
               )}
-              {mode === "upload"
-                ? "Tải lên"
-                : mode === "db-upload"
-                  ? "Upload DB"
-                  : mode === "embed"
-                    ? "Tạo video nhúng"
-                    : "Tạo video"}
+              {mode === "local-upload"
+                ? "Upload server storage"
+                : mode === "embed"
+                  ? "Tạo video nhúng"
+                  : "Tạo video"}
             </Button>
           </div>
         </form>

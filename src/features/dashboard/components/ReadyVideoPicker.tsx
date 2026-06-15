@@ -1,5 +1,12 @@
-import { CheckCircle2, Code2, Database, Link2, VideoIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  CheckCircle2,
+  Code2,
+  Database,
+  Link2,
+  Server,
+  VideoIcon,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   filterVideosBySource,
@@ -7,9 +14,11 @@ import {
   isDatabaseVideo,
   isEmbedVideo,
   isLinkVideo,
+  isLocalFileVideo,
   isShareableVideo,
   type VideoSourceFilter,
 } from "@/features/videos/videoSourceUtils";
+import { getLocalVideoThumbnailBlob } from "@/features/videos/videoApi";
 import type { VideoAsset } from "@/features/videos/videoTypes";
 
 type ReadyVideoPickerProps = {
@@ -50,6 +59,10 @@ export function ReadyVideoPicker({
     () => shareableVideos.filter(isDatabaseVideo),
     [shareableVideos],
   );
+  const localFileVideos = useMemo(
+    () => shareableVideos.filter(isLocalFileVideo),
+    [shareableVideos],
+  );
   const filteredVideos = useMemo(
     () => filterVideosBySource(shareableVideos, sourceFilter),
     [shareableVideos, sourceFilter],
@@ -57,6 +70,11 @@ export function ReadyVideoPicker({
   const filterTabs: FilterTab[] = [
     { value: "all", label: "All", count: shareableVideos.length },
     { value: "link", label: "Link video", count: linkVideos.length },
+    {
+      value: "local-file",
+      label: "Server video",
+      count: localFileVideos.length,
+    },
     { value: "embed", label: "Embed video", count: embedVideos.length },
     { value: "db-blob", label: "DB video", count: databaseVideos.length },
   ];
@@ -128,19 +146,7 @@ export function ReadyVideoPicker({
                   ].join(" ")}
                 >
                   <div className="relative aspect-video bg-(--admin-surface)">
-                    {video.thumbnailUrl ? (
-                      <img
-                        alt={video.title}
-                        className="size-full object-cover"
-                        decoding="async"
-                        loading="lazy"
-                        src={video.thumbnailUrl}
-                      />
-                    ) : (
-                      <div className="flex size-full items-center justify-center text-(--admin-text-muted)">
-                        <VideoIcon className="size-8" />
-                      </div>
-                    )}
+                    <ReadyVideoThumbnail video={video} />
 
                     <input
                       checked={isSelected}
@@ -156,6 +162,8 @@ export function ReadyVideoPicker({
                           <Code2 className="size-3" />
                         ) : sourceLabel === "Database" ? (
                           <Database className="size-3" />
+                        ) : sourceLabel === "Server" ? (
+                          <Server className="size-3" />
                         ) : (
                           <Link2 className="size-3" />
                         )}
@@ -188,6 +196,76 @@ export function ReadyVideoPicker({
   );
 }
 
+function ReadyVideoThumbnail({ video }: { video: VideoAsset }) {
+  const [localThumbnailObjectUrl, setLocalThumbnailObjectUrl] = useState<
+    string | null
+  >(null);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const isLocalFile = isLocalFileVideo(video);
+  const thumbnailUrl =
+    isLocalFile && video.localThumbnailAsset
+      ? localThumbnailObjectUrl
+      : video.thumbnailUrl;
+
+  useEffect(() => {
+    setThumbnailFailed(false);
+  }, [thumbnailUrl]);
+
+  useEffect(() => {
+    if (!isLocalFile || !video.localThumbnailAsset) {
+      setLocalThumbnailObjectUrl(null);
+      return;
+    }
+
+    let isCancelled = false;
+    let nextObjectUrl: string | null = null;
+
+    setLocalThumbnailObjectUrl(null);
+
+    void getLocalVideoThumbnailBlob(video)
+      .then((blob) => {
+        if (isCancelled) {
+          return;
+        }
+
+        nextObjectUrl = URL.createObjectURL(blob);
+        setLocalThumbnailObjectUrl(nextObjectUrl);
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setLocalThumbnailObjectUrl(null);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+
+      if (nextObjectUrl !== null) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
+    };
+  }, [isLocalFile, video]);
+
+  if (thumbnailUrl && !thumbnailFailed) {
+    return (
+      <img
+        alt={video.title}
+        className="size-full object-cover"
+        decoding="async"
+        loading="lazy"
+        src={thumbnailUrl}
+        onError={() => setThumbnailFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="flex size-full items-center justify-center text-(--admin-text-muted)">
+      <VideoIcon className="size-8" />
+    </div>
+  );
+}
+
 function getEmptyStateText(params: {
   searchQuery?: string;
   totalVideos: number;
@@ -209,6 +287,10 @@ function getEmptyStateText(params: {
 
   if (params.sourceFilter === "embed") {
     return "Chưa có embed video READY nào.";
+  }
+
+  if (params.sourceFilter === "local-file") {
+    return "Chưa có server storage video READY nào.";
   }
 
   if (params.sourceFilter === "db-blob") {

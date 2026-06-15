@@ -1,15 +1,19 @@
 import {
   Globe2,
   LayoutDashboard,
+  Loader2,
   LogOut,
   Network,
   Settings,
   Video,
 } from "lucide-react";
+import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
-import { clearCredentials } from "@/features/auth/authSlice";
+import { clearCredentials, logoutAdminThunk } from "@/features/auth/authSlice";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { persistor } from "@/store";
 
 const navItems = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -23,11 +27,35 @@ export function MainLayout() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const admin = useAppSelector((state) => state.auth.admin);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  function handleLogout(): void {
-    // TODO_MVP: Call backend logout endpoint in a later prompt.
-    dispatch(clearCredentials());
-    navigate("/login", { replace: true });
+  async function handleLogout(): Promise<void> {
+    if (isLoggingOut) {
+      return;
+    }
+
+    setIsLoggingOut(true);
+
+    try {
+      const result = await dispatch(logoutAdminThunk()).unwrap();
+      await persistor.flush();
+
+      navigate("/login", { replace: true });
+
+      if (result.revokeConfirmed) {
+        toast.success(result.message || "Đã đăng xuất.");
+        return;
+      }
+
+      toast.warning(result.message);
+    } catch {
+      dispatch(clearCredentials());
+      await persistor.flush();
+      navigate("/login", { replace: true });
+      toast.warning("Đã đăng xuất khỏi trình duyệt này.");
+    } finally {
+      setIsLoggingOut(false);
+    }
   }
 
   return (
@@ -69,12 +97,17 @@ export function MainLayout() {
           </nav>
 
           <button
-            className="mt-5 flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-(--admin-text) transition-colors hover:bg-(--admin-danger-soft) hover:text-(--admin-danger)"
+            className="mt-5 flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-(--admin-text) transition-colors hover:bg-(--admin-danger-soft) hover:text-(--admin-danger) disabled:cursor-not-allowed disabled:opacity-60"
             type="button"
-            onClick={handleLogout}
+            disabled={isLoggingOut}
+            onClick={() => void handleLogout()}
           >
-            <LogOut className="size-4" />
-            <span>Logout</span>
+            {isLoggingOut ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <LogOut className="size-4" />
+            )}
+            <span>{isLoggingOut ? "Logging out..." : "Logout"}</span>
           </button>
         </aside>
 
@@ -96,12 +129,17 @@ export function MainLayout() {
                 </div>
 
                 <button
-                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-(--admin-border) bg-(--admin-surface) px-3 text-sm font-medium text-(--admin-text) transition-colors hover:bg-(--admin-danger-soft) hover:text-(--admin-danger) md:hidden"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-(--admin-border) bg-(--admin-surface) px-3 text-sm font-medium text-(--admin-text) transition-colors hover:bg-(--admin-danger-soft) hover:text-(--admin-danger) disabled:cursor-not-allowed disabled:opacity-60 md:hidden"
                   type="button"
-                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  onClick={() => void handleLogout()}
                 >
-                  <LogOut className="size-4" />
-                  <span>Logout</span>
+                  {isLoggingOut ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <LogOut className="size-4" />
+                  )}
+                  <span>{isLoggingOut ? "Logging out..." : "Logout"}</span>
                 </button>
               </div>
             </div>

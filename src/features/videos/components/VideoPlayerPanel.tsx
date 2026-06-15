@@ -6,6 +6,7 @@ import {
   Pause,
   Play,
   Rewind,
+  Server,
   Shrink,
   Volume2,
   VolumeX,
@@ -23,7 +24,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { getDefaultThumbnailUrlFromPlaybackUrl } from "../cloudinaryVideoUtils";
-import { getDatabaseVideoBinaryBlob } from "../videoApi";
+import {
+  getDatabaseVideoBinaryBlob,
+  getLocalVideoFileBlob,
+  getLocalVideoThumbnailBlob,
+} from "../videoApi";
 import { formatDuration } from "../videoFormatters";
 import type { VideoAsset } from "../videoTypes";
 
@@ -99,15 +104,26 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
   const [databaseObjectUrl, setDatabaseObjectUrl] = useState<string | null>(
     null,
   );
+  const [localObjectUrl, setLocalObjectUrl] = useState<string | null>(null);
+  const [localThumbnailObjectUrl, setLocalThumbnailObjectUrl] = useState<
+    string | null
+  >(null);
   const [isDatabasePreviewLoading, setIsDatabasePreviewLoading] =
     useState(false);
+  const [isLocalPreviewLoading, setIsLocalPreviewLoading] = useState(false);
   const [databasePreviewError, setDatabasePreviewError] = useState<
     string | null
   >(null);
+  const [localPreviewError, setLocalPreviewError] = useState<string | null>(
+    null,
+  );
   const isDatabaseVideo = video.sourceType === "DB_BLOB";
+  const isLocalFileVideo = video.sourceType === "LOCAL_FILE";
   const directPlaybackUrl = isDatabaseVideo
     ? databaseObjectUrl
-    : video.playbackUrl;
+    : isLocalFileVideo
+      ? localObjectUrl
+      : video.playbackUrl;
   const displayTime =
     isSeeking && seekPreviewTime !== null ? seekPreviewTime : currentTime;
   const canSeek = duration > 0 && Number.isFinite(duration);
@@ -128,6 +144,14 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
   };
 
   const posterUrl = useMemo(() => {
+    if (isLocalFileVideo && localThumbnailObjectUrl) {
+      return localThumbnailObjectUrl;
+    }
+
+    if (isLocalFileVideo && video.localThumbnailAsset) {
+      return null;
+    }
+
     if (video.thumbnailUrl) {
       return video.thumbnailUrl;
     }
@@ -135,7 +159,12 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
     return video.playbackUrl
       ? getDefaultThumbnailUrlFromPlaybackUrl(video.playbackUrl)
       : null;
-  }, [video.playbackUrl, video.thumbnailUrl]);
+  }, [
+    isLocalFileVideo,
+    localThumbnailObjectUrl,
+    video.playbackUrl,
+    video.thumbnailUrl,
+  ]);
 
   useEffect(() => {
     if (!isDatabaseVideo) {
@@ -182,6 +211,92 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
       }
     };
   }, [isDatabaseVideo, video.id]);
+
+  useEffect(() => {
+    if (!isLocalFileVideo) {
+      setLocalObjectUrl(null);
+      setLocalPreviewError(null);
+      setIsLocalPreviewLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+    let nextObjectUrl: string | null = null;
+
+    setLocalObjectUrl(null);
+    setLocalPreviewError(null);
+    setIsLocalPreviewLoading(true);
+
+    void getLocalVideoFileBlob(video)
+      .then((blob) => {
+        if (isCancelled) {
+          return;
+        }
+
+        nextObjectUrl = URL.createObjectURL(blob);
+        setLocalObjectUrl(nextObjectUrl);
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setLocalPreviewError(
+            "Không thể tải preview server storage video bằng phiên admin hiện tại.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLocalPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+
+      if (nextObjectUrl !== null) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
+    };
+  }, [isLocalFileVideo, video.id, video.localPlaybackUrl]);
+
+  useEffect(() => {
+    if (!isLocalFileVideo || !video.localThumbnailAsset) {
+      setLocalThumbnailObjectUrl(null);
+      return;
+    }
+
+    let isCancelled = false;
+    let nextObjectUrl: string | null = null;
+
+    setLocalThumbnailObjectUrl(null);
+
+    void getLocalVideoThumbnailBlob(video)
+      .then((blob) => {
+        if (isCancelled) {
+          return;
+        }
+
+        nextObjectUrl = URL.createObjectURL(blob);
+        setLocalThumbnailObjectUrl(nextObjectUrl);
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setLocalThumbnailObjectUrl(null);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+
+      if (nextObjectUrl !== null) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
+    };
+  }, [
+    isLocalFileVideo,
+    video.id,
+    video.localThumbnailAsset,
+    video.thumbnailUrl,
+  ]);
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -516,16 +631,38 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
     );
   }
 
+  if (isLocalFileVideo && isLocalPreviewLoading) {
+    return (
+      <div className="flex aspect-video flex-col items-center justify-center gap-3 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface-alt)] text-center text-sm text-[var(--admin-text)]">
+        <Loader2 className="size-6 animate-spin text-[var(--admin-primary)]" />
+        <span>Đang tải protected server storage preview...</span>
+      </div>
+    );
+  }
+
+  if (isLocalFileVideo && localPreviewError) {
+    return (
+      <div className="flex aspect-video flex-col items-center justify-center gap-3 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface-alt)] px-6 text-center text-sm text-[var(--admin-text)]">
+        <Server className="size-7 text-[var(--admin-text-muted)]" />
+        <span>{localPreviewError}</span>
+      </div>
+    );
+  }
+
   if (!directPlaybackUrl) {
     return (
       <div className="flex aspect-video flex-col items-center justify-center gap-3 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface-alt)] px-6 text-center text-sm text-[var(--admin-text)]">
         {isDatabaseVideo ? (
           <Database className="size-7 text-[var(--admin-text-muted)]" />
+        ) : isLocalFileVideo ? (
+          <Server className="size-7 text-[var(--admin-text-muted)]" />
         ) : null}
         <span>
           {isDatabaseVideo
             ? "Database video is stored, but admin preview is not available."
-            : "Video chưa có playback URL"}
+            : isLocalFileVideo
+              ? "Server storage video is stored, but admin preview is not available."
+              : "Video chưa có playback URL"}
         </span>
       </div>
     );

@@ -6,6 +6,7 @@ export type NormalizedApiError = {
   code?: string;
   isAuthError: boolean;
   isNetworkError: boolean;
+  isRateLimitError: boolean;
   isServerError: boolean;
 };
 
@@ -50,6 +51,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       message: "Có lỗi xảy ra. Vui lòng thử lại.",
       isAuthError: false,
       isNetworkError: false,
+      isRateLimitError: false,
       isServerError: false,
     };
   }
@@ -61,6 +63,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       code: error.code,
       isAuthError: false,
       isNetworkError: true,
+      isRateLimitError: false,
       isServerError: false,
     };
   }
@@ -77,6 +80,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       code,
       isAuthError: true,
       isNetworkError: false,
+      isRateLimitError: false,
       isServerError: false,
     };
   }
@@ -88,6 +92,19 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       code,
       isAuthError: true,
       isNetworkError: false,
+      isRateLimitError: false,
+      isServerError: false,
+    };
+  }
+
+  if (status === 429) {
+    return {
+      status,
+      message: "Có quá nhiều yêu cầu. Vui lòng chờ một lúc rồi thử lại.",
+      code,
+      isAuthError: false,
+      isNetworkError: false,
+      isRateLimitError: true,
       isServerError: false,
     };
   }
@@ -99,6 +116,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       code,
       isAuthError: false,
       isNetworkError: false,
+      isRateLimitError: false,
       isServerError: true,
     };
   }
@@ -110,6 +128,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
     code,
     isAuthError: false,
     isNetworkError: false,
+    isRateLimitError: false,
     isServerError: false,
   };
 }

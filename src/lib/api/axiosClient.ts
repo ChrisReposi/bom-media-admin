@@ -125,7 +125,11 @@ async function refreshAccessToken(): Promise<string> {
     const normalizedError = normalizeApiError(error);
 
     if (normalizedError.isAuthError) {
-      handleRefreshFailure(normalizedError.message);
+      handleRefreshFailure(
+        normalizedError.status === 403
+          ? "Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại."
+          : normalizedError.message,
+      );
     }
 
     throw error;

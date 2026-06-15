@@ -7,15 +7,23 @@ import {
 import type {
   CreateVideoEmbedPayload,
   CreateVideoManualPayload,
+  PurgeVideoPayload,
+  PurgeVideoResponse,
   ReplaceDatabaseVideoBinaryPayload,
+  UpdateLocalVideoThumbnailPayload,
   UpdateVideoPayload,
-  UploadDatabaseVideoPayload,
-  UploadVideoPayload,
+  UploadLocalVideoPayload,
+  UploadLocalVideoProgress,
   VideoAsset,
   VideoProvider,
+  VideoUploadSession,
   VideosListResponse,
   VideoStatus,
 } from "./videoTypes";
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
+const DEFAULT_LOCAL_CHUNK_SIZE_MB = 50;
 
 type VideoSortOrder = "asc" | "desc";
 
@@ -32,6 +40,25 @@ type GetVideosParams = {
 };
 
 type VideoDetailResponse = VideoAsset | { data: VideoAsset };
+
+type InitLocalVideoUploadResponse = {
+  message: string;
+  upload: VideoUploadSession;
+};
+
+type LocalVideoChunkUploadResponse = {
+  message: string;
+  upload: VideoUploadSession;
+};
+
+type CancelLocalVideoUploadResponse = {
+  message: string;
+};
+
+type UploadLocalVideoOptions = {
+  signal?: AbortSignal;
+  onProgress?: (progress: UploadLocalVideoProgress) => void;
+};
 
 export function getApiErrorMessage(error: unknown): string {
   if (normalizeApiError(error).status === 404) {
@@ -155,6 +182,55 @@ function unwrapVideoResponse(response: VideoDetailResponse): VideoAsset {
   return response;
 }
 
+function getConfiguredLocalChunkSizeBytes(): number {
+  const rawValue = import.meta.env.VITE_LOCAL_VIDEO_CHUNK_SIZE_MB;
+  const megabytes =
+    typeof rawValue === "string" && rawValue.trim() !== ""
+      ? Number(rawValue)
+      : DEFAULT_LOCAL_CHUNK_SIZE_MB;
+
+  if (!Number.isFinite(megabytes) || megabytes <= 0) {
+    return DEFAULT_LOCAL_CHUNK_SIZE_MB * 1024 * 1024;
+  }
+
+  return Math.floor(megabytes * 1024 * 1024);
+}
+
+function buildApiResourceUrl(value: string | null | undefined): string {
+  const rawValue = value?.trim();
+  if (!rawValue) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(rawValue);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return rawValue;
+    }
+  } catch {
+    // Continue with relative path handling.
+  }
+
+  const apiBase = new URL(API_BASE_URL);
+
+  if (rawValue.startsWith("/api/")) {
+    return `${apiBase.origin}${rawValue}`;
+  }
+
+  if (rawValue.startsWith("/")) {
+    return `${API_BASE_URL.replace(/\/+$/g, "")}${rawValue}`;
+  }
+
+  return `${API_BASE_URL.replace(/\/+$/g, "")}/${rawValue.replace(/^\/+/g, "")}`;
+}
+
+function emitLocalUploadProgress(
+  options: UploadLocalVideoOptions | undefined,
+  progress: UploadLocalVideoProgress,
+): void {
+  options?.onProgress?.(progress);
+}
+
 function cleanUpdatePayload(payload: UpdateVideoPayload): UpdateVideoPayload {
   return {
     ...(payload.title !== undefined ? { title: payload.title.trim() } : {}),
@@ -212,6 +288,32 @@ export async function getVideoById(id: string): Promise<VideoAsset> {
 export async function getDatabaseVideoBinaryBlob(id: string): Promise<Blob> {
   const response = await axiosClient.get<Blob>(`/admin/videos/${id}/binary`, {
     responseType: "blob",
+  });
+
+  return response.data;
+}
+
+export async function getLocalVideoFileBlob(video: VideoAsset): Promise<Blob> {
+  const url = buildApiResourceUrl(
+    video.localPlaybackUrl ?? `/admin/videos/${video.id}/local-file`,
+  );
+  const response = await axiosClient.get<Blob>(url, {
+    responseType: "blob",
+    timeout: 0,
+  });
+
+  return response.data;
+}
+
+export async function getLocalVideoThumbnailBlob(
+  video: VideoAsset,
+): Promise<Blob> {
+  const url = buildApiResourceUrl(
+    video.thumbnailUrl ?? `/admin/videos/${video.id}/thumbnail`,
+  );
+  const response = await axiosClient.get<Blob>(url, {
+    responseType: "blob",
+    timeout: 0,
   });
 
   return response.data;
@@ -297,50 +399,188 @@ export async function updateVideo(
   return unwrapVideoResponse(response.data);
 }
 
-export async function uploadVideo(
-  payload: UploadVideoPayload,
+export async function updateVideoStatus(
+  id: string,
+  status: VideoStatus,
 ): Promise<VideoAsset> {
+  return updateVideo(id, { status });
+}
+
+async function initLocalVideoUpload(
+  payload: UploadLocalVideoPayload,
+  chunkSizeBytes: number,
+  signal?: AbortSignal,
+): Promise<VideoUploadSession> {
+  const totalChunks = Math.ceil(payload.file.size / chunkSizeBytes);
+  const response = await axiosClient.post<InitLocalVideoUploadResponse>(
+    "/admin/videos/upload-local/init",
+    {
+      title: payload.title.trim(),
+      originalFilename: payload.file.name,
+      mimeType: payload.file.type || "video/mp4",
+      totalBytes: payload.file.size,
+      totalChunks,
+      chunkSizeBytes,
+      ...(payload.description?.trim()
+        ? { description: payload.description.trim() }
+        : {}),
+      ...(payload.viewCount !== undefined
+        ? { viewCount: String(payload.viewCount) }
+        : {}),
+      ...(payload.publishedAt ? { publishedAt: payload.publishedAt } : {}),
+      ...(payload.status ? { status: payload.status } : {}),
+    },
+    { signal },
+  );
+
+  return response.data.upload;
+}
+
+async function uploadLocalVideoChunk(params: {
+  uploadId: string;
+  chunkIndex: number;
+  chunk: Blob;
+  filename: string;
+  signal?: AbortSignal;
+}): Promise<VideoUploadSession> {
   const formData = new FormData();
+  formData.append("chunkIndex", String(params.chunkIndex));
+  formData.append("chunk", params.chunk, params.filename);
 
-  formData.append("file", payload.file);
-  formData.append("title", payload.title.trim());
-  appendOptionalVideoFormFields(formData, payload);
-
-  const response = await axiosClient.post<VideoAsset>(
-    "/admin/videos/upload",
+  const response = await axiosClient.post<LocalVideoChunkUploadResponse>(
+    `/admin/videos/upload-local/${encodeURIComponent(params.uploadId)}/chunks`,
     formData,
     {
       headers: {
         "Content-Type": "multipart/form-data",
       },
+      signal: params.signal,
       timeout: 0,
     },
+  );
+
+  return response.data.upload;
+}
+
+async function completeLocalVideoUpload(
+  uploadId: string,
+  payload: Pick<UploadLocalVideoPayload, "thumbnailFile">,
+  signal?: AbortSignal,
+): Promise<VideoAsset> {
+  const formData = new FormData();
+
+  if (payload.thumbnailFile) {
+    formData.append("thumbnailFile", payload.thumbnailFile);
+  }
+
+  const response = await axiosClient.post<VideoDetailResponse>(
+    `/admin/videos/upload-local/${encodeURIComponent(uploadId)}/complete`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      signal,
+      timeout: 0,
+    },
+  );
+
+  return unwrapVideoResponse(response.data);
+}
+
+export async function cancelLocalVideoUpload(
+  uploadId: string,
+): Promise<CancelLocalVideoUploadResponse> {
+  const response = await axiosClient.post<CancelLocalVideoUploadResponse>(
+    `/admin/videos/upload-local/${encodeURIComponent(uploadId)}/cancel`,
   );
 
   return response.data;
 }
 
-export async function uploadDatabaseVideo(
-  payload: UploadDatabaseVideoPayload,
+export async function uploadLocalVideo(
+  payload: UploadLocalVideoPayload,
+  options?: UploadLocalVideoOptions,
 ): Promise<VideoAsset> {
-  const formData = new FormData();
+  const chunkSizeBytes = getConfiguredLocalChunkSizeBytes();
+  const totalChunks = Math.ceil(payload.file.size / chunkSizeBytes);
 
-  formData.append("file", payload.file);
-  formData.append("title", payload.title.trim());
-  appendOptionalVideoFormFields(formData, payload);
+  emitLocalUploadProgress(options, {
+    phase: "init",
+    uploadedChunks: 0,
+    totalChunks,
+    percent: 0,
+  });
 
-  const response = await axiosClient.post<VideoAsset>(
-    "/admin/videos/upload-db",
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-      timeout: 0,
-    },
+  const upload = await initLocalVideoUpload(
+    payload,
+    chunkSizeBytes,
+    options?.signal,
+  );
+  let latestUpload = upload;
+
+  for (let chunkIndex = 0; chunkIndex < upload.totalChunks; chunkIndex += 1) {
+    if (options?.signal?.aborted) {
+      throw new DOMException("Upload canceled.", "AbortError");
+    }
+
+    const start = chunkIndex * upload.chunkSizeBytes;
+    const end = Math.min(start + upload.chunkSizeBytes, payload.file.size);
+    const chunk = payload.file.slice(start, end, payload.file.type);
+
+    latestUpload = await uploadLocalVideoChunk({
+      uploadId: upload.id,
+      chunkIndex,
+      chunk,
+      filename: `${payload.file.name}.part-${chunkIndex}`,
+      signal: options?.signal,
+    });
+
+    emitLocalUploadProgress(options, {
+      phase: "uploading",
+      uploadId: upload.id,
+      uploadedChunks: latestUpload.uploadedChunks,
+      totalChunks: latestUpload.totalChunks,
+      percent:
+        latestUpload.totalChunks > 0
+          ? Math.round(
+              (latestUpload.uploadedChunks / latestUpload.totalChunks) * 100,
+            )
+          : 0,
+    });
+  }
+
+  emitLocalUploadProgress(options, {
+    phase: "complete",
+    uploadId: upload.id,
+    uploadedChunks: latestUpload.uploadedChunks,
+    totalChunks: latestUpload.totalChunks,
+    percent: 100,
+  });
+
+  const createdVideo = await completeLocalVideoUpload(
+    upload.id,
+    { thumbnailFile: payload.thumbnailFile },
+    options?.signal,
   );
 
-  return response.data;
+  if (
+    payload.durationSeconds !== undefined ||
+    payload.thumbnailUrl !== undefined
+  ) {
+    const metadataPatch: UpdateVideoPayload = {
+      ...(payload.thumbnailUrl !== undefined
+        ? { thumbnailUrl: payload.thumbnailUrl }
+        : {}),
+      ...(payload.durationSeconds !== undefined
+        ? { durationSeconds: payload.durationSeconds }
+        : {}),
+    };
+
+    return updateVideo(createdVideo.id, metadataPatch);
+  }
+
+  return createdVideo;
 }
 
 export async function replaceDatabaseVideoBinary(
@@ -364,6 +604,39 @@ export async function replaceDatabaseVideoBinary(
   );
 
   return unwrapVideoResponse(response.data);
+}
+
+export async function updateLocalVideoThumbnail(
+  id: string,
+  payload: UpdateLocalVideoThumbnailPayload,
+): Promise<VideoAsset> {
+  const formData = new FormData();
+  formData.append("thumbnailFile", payload.thumbnailFile);
+
+  const response = await axiosClient.patch<VideoDetailResponse>(
+    `/admin/videos/${id}/thumbnail-local`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 0,
+    },
+  );
+
+  return unwrapVideoResponse(response.data);
+}
+
+export async function purgeVideo(
+  id: string,
+  payload: PurgeVideoPayload,
+): Promise<PurgeVideoResponse> {
+  const response = await axiosClient.post<PurgeVideoResponse>(
+    `/admin/videos/${id}/purge`,
+    payload,
+  );
+
+  return response.data;
 }
 
 export async function deleteVideo(id: string): Promise<{ message: string }> {

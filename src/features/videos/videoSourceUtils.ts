@@ -1,25 +1,48 @@
 import type { VideoAsset } from "./videoTypes";
 
-export type VideoSourceFilter = "all" | "link" | "embed" | "db-blob";
+export type VideoSourceFilter =
+  | "all"
+  | "link"
+  | "embed"
+  | "local-file"
+  | "db-blob";
+
+function hasPlayableVideoAsset(
+  asset:
+    | {
+        mimeType: string;
+        sizeBytes: string | number;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!asset) {
+    return false;
+  }
+
+  const sizeBytes = Number(asset.sizeBytes);
+
+  return (
+    asset.mimeType.startsWith("video/") &&
+    Number.isFinite(sizeBytes) &&
+    sizeBytes > 0
+  );
+}
 
 export function isDatabaseVideo(video: VideoAsset): boolean {
   return video.sourceType === "DB_BLOB";
 }
 
 export function hasPlayableDatabaseBinary(video: VideoAsset): boolean {
-  const binaryAsset = video.binaryAsset;
+  return hasPlayableVideoAsset(video.binaryAsset);
+}
 
-  if (!binaryAsset) {
-    return false;
-  }
+export function isLocalFileVideo(video: VideoAsset): boolean {
+  return video.sourceType === "LOCAL_FILE";
+}
 
-  const sizeBytes = Number(binaryAsset.sizeBytes);
-
-  return (
-    binaryAsset.mimeType.startsWith("video/") &&
-    Number.isFinite(sizeBytes) &&
-    sizeBytes > 0
-  );
+export function hasPlayableLocalFile(video: VideoAsset): boolean {
+  return hasPlayableVideoAsset(video.localFileAsset);
 }
 
 export function isEmbedVideo(video: VideoAsset): boolean {
@@ -29,6 +52,7 @@ export function isEmbedVideo(video: VideoAsset): boolean {
 export function isLinkVideo(video: VideoAsset): boolean {
   return (
     !isDatabaseVideo(video) &&
+    !isLocalFileVideo(video) &&
     !isEmbedVideo(video) &&
     Boolean(video.playbackUrl)
   );
@@ -43,14 +67,22 @@ export function isShareableVideo(video: VideoAsset): boolean {
     return hasPlayableDatabaseBinary(video);
   }
 
+  if (isLocalFileVideo(video)) {
+    return hasPlayableLocalFile(video);
+  }
+
   return Boolean(video.embedUrl || video.playbackUrl);
 }
 
 export function getVideoSourceLabel(
   video: VideoAsset,
-): "Embed" | "Link" | "Database" | "Unknown" {
+): "Embed" | "Link" | "Server" | "Database" | "Unknown" {
   if (isDatabaseVideo(video)) {
     return "Database";
+  }
+
+  if (isLocalFileVideo(video)) {
+    return "Server";
   }
 
   if (isEmbedVideo(video)) {
@@ -66,13 +98,17 @@ export function getVideoSourceLabel(
 
 export function getVideoPlaybackKind(
   video: VideoAsset,
-): "direct" | "embed" | "db-blob" | "not-playable" {
+): "direct" | "embed" | "local-file" | "db-blob" | "not-playable" {
   if (video.status !== "READY") {
     return "not-playable";
   }
 
   if (isDatabaseVideo(video)) {
     return hasPlayableDatabaseBinary(video) ? "db-blob" : "not-playable";
+  }
+
+  if (isLocalFileVideo(video)) {
+    return hasPlayableLocalFile(video) ? "local-file" : "not-playable";
   }
 
   if (isEmbedVideo(video) && video.embedUrl) {
@@ -96,6 +132,10 @@ export function filterVideosBySource(
 
   if (filter === "embed") {
     return videos.filter(isEmbedVideo);
+  }
+
+  if (filter === "local-file") {
+    return videos.filter(isLocalFileVideo);
   }
 
   if (filter === "db-blob") {

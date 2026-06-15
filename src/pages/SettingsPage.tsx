@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from "lucide-react"; // THAY ĐỔI: Thêm Eye và EyeOff
-import { useState } from "react"; // THAY ĐỔI: Thêm useState từ react
+import axios from "axios";
+import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,35 +11,36 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { changeAdminPassword } from "@/features/auth/authApi";
 import { clearCredentials } from "@/features/auth/authSlice";
-import { getApiErrorMessage } from "@/lib/api/apiError";
+import { getApiErrorMessage, normalizeApiError } from "@/lib/api/apiError";
 import { cn } from "@/lib/utils";
+import { persistor } from "@/store";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
 const changePasswordSchema = z
   .object({
     oldPassword: z
       .string()
-      .min(1, "Current password is required.")
-      .max(128, "Current password is too long."),
+      .min(1, "Vui lòng nhập mật khẩu hiện tại.")
+      .max(128, "Mật khẩu hiện tại tối đa 128 ký tự."),
     newPassword: z
       .string()
-      .min(8, "New password must be at least 8 characters.")
-      .max(128, "New password is too long."),
+      .min(8, "Mật khẩu mới phải có ít nhất 8 ký tự.")
+      .max(128, "Mật khẩu mới tối đa 128 ký tự."),
     confirmNewPassword: z
       .string()
-      .min(8, "Confirm the new password.")
-      .max(128, "Confirmation is too long."),
+      .min(8, "Vui lòng xác nhận mật khẩu mới.")
+      .max(128, "Xác nhận mật khẩu tối đa 128 ký tự."),
     secretCode: z
       .string()
-      .min(8, "Secret code is required.")
-      .max(256, "Secret code is too long."),
+      .min(8, "Vui lòng nhập mã xác thực đổi mật khẩu.")
+      .max(256, "Mã xác thực tối đa 256 ký tự."),
   })
   .superRefine((value, context) => {
     if (value.newPassword !== value.confirmNewPassword) {
       context.addIssue({
         code: "custom",
         path: ["confirmNewPassword"],
-        message: "New password confirmation must match.",
+        message: "Xác nhận mật khẩu mới chưa khớp.",
       });
     }
 
@@ -46,7 +48,7 @@ const changePasswordSchema = z
       context.addIssue({
         code: "custom",
         path: ["newPassword"],
-        message: "New password must differ from the current password.",
+        message: "Mật khẩu mới phải khác mật khẩu hiện tại.",
       });
     }
   });
@@ -73,12 +75,19 @@ function fieldClass(hasError: boolean): string {
   );
 }
 
+function isChangePasswordVerificationFailure(error: unknown): boolean {
+  return (
+    axios.isAxiosError(error) &&
+    error.response?.status === 401 &&
+    String(error.config?.url ?? "").includes("/admin/auth/change-password")
+  );
+}
+
 export function SettingsPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const admin = useAppSelector((state) => state.auth.admin);
 
-  // THAY ĐỔI: Khởi tạo các state kiểm soát ẩn/hiện cho từng ô mật khẩu độc lập
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -89,6 +98,8 @@ export function SettingsPage() {
     handleSubmit,
     register,
     reset,
+    setError,
+    clearErrors,
   } = useForm<ChangePasswordFormValues>({
     resolver: changePasswordResolver,
     defaultValues: {
@@ -102,25 +113,50 @@ export function SettingsPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     try {
+      clearErrors("root");
+
       const response = await changeAdminPassword({
         oldPassword: values.oldPassword,
         newPassword: values.newPassword,
         secretCode: values.secretCode,
       });
 
-      toast.success(response.message || "Password changed successfully.");
+      toast.success(
+        response.message || "Đổi mật khẩu thành công. Vui lòng đăng nhập lại.",
+      );
       reset();
-      dispatch(clearCredentials("Password changed. Please login again."));
+      dispatch(clearCredentials());
+      await persistor.flush();
       navigate("/login", { replace: true });
     } catch (error) {
-      toast.error(getApiErrorMessage(error));
+      if (isChangePasswordVerificationFailure(error)) {
+        const message =
+          "Không thể đổi mật khẩu. Vui lòng kiểm tra lại mật khẩu hiện tại hoặc mã xác thực.";
+        setError("root", { type: "server", message });
+        toast.error(message);
+        return;
+      }
+
+      const normalizedError = normalizeApiError(error);
+
+      if (normalizedError.isAuthError) {
+        dispatch(clearCredentials(normalizedError.message));
+        await persistor.flush();
+        navigate("/login", { replace: true });
+        toast.error(normalizedError.message);
+        return;
+      }
+
+      const message = getApiErrorMessage(error);
+      setError("root", { type: "server", message });
+      toast.error(message);
     }
   });
 
   return (
     <section className="space-y-6">
       <h1 className="text-xl font-semibold text-(--admin-text-strong)">
-        Settings
+        Cài đặt
       </h1>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,42rem)_minmax(18rem,1fr)]">
@@ -131,29 +167,34 @@ export function SettingsPage() {
             </span>
             <div>
               <h2 className="text-lg font-semibold text-(--admin-text-strong)">
-                Change password
+                Đổi mật khẩu
               </h2>
               <p className="mt-1 text-sm text-(--admin-text-muted)">
-                You will be logged out after a successful password change.
+                Sau khi đổi mật khẩu thành công, bạn sẽ cần đăng nhập lại để
+                tiếp tục sử dụng trang quản trị.
               </p>
             </div>
           </div>
 
           <form className="space-y-4" noValidate onSubmit={onSubmit}>
-            {/* 1. CURRENT PASSWORD */}
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Current password</span>
+              <span className="mb-2 block">Mật khẩu hiện tại</span>
               <div className="relative">
                 <Input
                   autoComplete="current-password"
-                  className={cn(fieldClass(!!errors.oldPassword), "pr-10")} // Thêm pr-10 để chữ không đè lên icon
+                  className={cn(fieldClass(!!errors.oldPassword), "pr-10")}
                   type={showOldPassword ? "text" : "password"}
                   aria-invalid={!!errors.oldPassword}
                   {...register("oldPassword")}
                 />
                 <button
-                  type="button" // Bắt buộc phải có type="button" để tránh trigger submit form
+                  type="button"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-(--admin-text-muted) hover:text-(--admin-text-strong) transition-colors"
+                  aria-label={
+                    showOldPassword
+                      ? "Ẩn mật khẩu hiện tại"
+                      : "Hiện mật khẩu hiện tại"
+                  }
                   onClick={() => setShowOldPassword(!showOldPassword)}
                 >
                   {showOldPassword ? (
@@ -166,9 +207,8 @@ export function SettingsPage() {
               <FieldError message={errors.oldPassword?.message} />
             </label>
 
-            {/* 2. NEW PASSWORD */}
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">New password</span>
+              <span className="mb-2 block">Mật khẩu mới</span>
               <div className="relative">
                 <Input
                   autoComplete="new-password"
@@ -180,6 +220,9 @@ export function SettingsPage() {
                 <button
                   type="button"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-(--admin-text-muted) hover:text-(--admin-text-strong) transition-colors"
+                  aria-label={
+                    showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"
+                  }
                   onClick={() => setShowNewPassword(!showNewPassword)}
                 >
                   {showNewPassword ? (
@@ -192,9 +235,8 @@ export function SettingsPage() {
               <FieldError message={errors.newPassword?.message} />
             </label>
 
-            {/* 3. CONFIRM NEW PASSWORD */}
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Confirm new password</span>
+              <span className="mb-2 block">Xác nhận mật khẩu mới</span>
               <div className="relative">
                 <Input
                   autoComplete="new-password"
@@ -209,6 +251,11 @@ export function SettingsPage() {
                 <button
                   type="button"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-(--admin-text-muted) hover:text-(--admin-text-strong) transition-colors"
+                  aria-label={
+                    showConfirmPassword
+                      ? "Ẩn xác nhận mật khẩu mới"
+                      : "Hiện xác nhận mật khẩu mới"
+                  }
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 >
                   {showConfirmPassword ? (
@@ -221,9 +268,8 @@ export function SettingsPage() {
               <FieldError message={errors.confirmNewPassword?.message} />
             </label>
 
-            {/* 4. SECRET CODE */}
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Secret code</span>
+              <span className="mb-2 block">Mã xác thực đổi mật khẩu</span>
               <div className="relative">
                 <Input
                   autoComplete="off"
@@ -235,6 +281,11 @@ export function SettingsPage() {
                 <button
                   type="button"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-(--admin-text-muted) hover:text-(--admin-text-strong) transition-colors"
+                  aria-label={
+                    showSecretCode
+                      ? "Ẩn mã xác thực đổi mật khẩu"
+                      : "Hiện mã xác thực đổi mật khẩu"
+                  }
                   onClick={() => setShowSecretCode(!showSecretCode)}
                 >
                   {showSecretCode ? (
@@ -247,6 +298,8 @@ export function SettingsPage() {
               <FieldError message={errors.secretCode?.message} />
             </label>
 
+            <FieldError message={errors.root?.message} />
+
             <div className="flex flex-col-reverse gap-3 border-t border-(--admin-border) pt-5 sm:flex-row sm:justify-end">
               <Button disabled={isSubmitting} type="submit">
                 {isSubmitting ? (
@@ -254,7 +307,7 @@ export function SettingsPage() {
                 ) : (
                   <ShieldCheck className="size-4" />
                 )}
-                Change password
+                {isSubmitting ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
               </Button>
             </div>
           </form>
@@ -262,25 +315,25 @@ export function SettingsPage() {
 
         <aside className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm">
           <h2 className="text-base font-semibold text-(--admin-text-strong)">
-            Current admin
+            Tài khoản hiện tại
           </h2>
           <dl className="mt-4 space-y-3 text-sm">
             <div>
-              <dt className="text-(--admin-text-muted)">Username</dt>
+              <dt className="text-(--admin-text-muted)">Tài khoản</dt>
               <dd className="font-medium text-(--admin-text-strong)">
-                {admin?.username ?? "Unknown"}
+                {admin?.username ?? "Không xác định"}
               </dd>
             </div>
             <div>
-              <dt className="text-(--admin-text-muted)">Role</dt>
+              <dt className="text-(--admin-text-muted)">Vai trò</dt>
               <dd className="font-medium text-(--admin-text-strong)">
-                {admin?.role ?? "Unknown"}
+                {admin?.role ?? "Không xác định"}
               </dd>
             </div>
             <div>
-              <dt className="text-(--admin-text-muted)">Status</dt>
+              <dt className="text-(--admin-text-muted)">Trạng thái</dt>
               <dd className="font-medium text-(--admin-text-strong)">
-                {admin?.status ?? "Unknown"}
+                {admin?.status ?? "Không xác định"}
               </dd>
             </div>
           </dl>

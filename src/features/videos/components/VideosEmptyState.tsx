@@ -17,8 +17,8 @@ export function VideosEmptyState({ onCreate }: VideosEmptyStateProps) {
         Chưa có video
       </h2>
       <p className="mt-2 max-w-md text-sm text-[var(--admin-text)]">
-        Tạo video thủ công bằng URL phát hoặc tải file lên Cloudinary để bắt đầu
-        quản lý thư viện.
+        Upload file lên server storage hoặc tạo video thủ công bằng URL phát để
+        bắt đầu quản lý thư viện.
       </p>
 
       <Button className="mt-6" type="button" onClick={onCreate}>

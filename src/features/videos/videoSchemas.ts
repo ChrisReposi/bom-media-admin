@@ -30,7 +30,7 @@ function isHttpUrl(value: string): boolean {
 
 export const createVideoSchema = z
   .object({
-    mode: z.enum(["manual", "upload", "embed", "db-upload"]),
+    mode: z.enum(["local-upload", "manual", "embed"]),
     title: z
       .string()
       .trim()
@@ -103,7 +103,7 @@ export const createVideoSchema = z
       }
     }
 
-    if (value.mode === "db-upload") {
+    if (value.mode === "local-upload") {
       if (value.thumbnailUrl && value.thumbnailUrl.trim() !== "") {
         if (!isHttpUrl(value.thumbnailUrl.trim())) {
           context.addIssue({
@@ -115,19 +115,7 @@ export const createVideoSchema = z
       }
     }
 
-    if (value.mode === "upload") {
-      if (value.thumbnailUrl && value.thumbnailUrl.trim() !== "") {
-        if (!isHttpUrl(value.thumbnailUrl.trim())) {
-          context.addIssue({
-            code: "custom",
-            path: ["thumbnailUrl"],
-            message: "URL thumbnail không hợp lệ",
-          });
-        }
-      }
-    }
-
-    if (value.mode === "upload" || value.mode === "db-upload") {
+    if (value.mode === "local-upload") {
       const file = value.file?.item(0);
 
       if (!file) {

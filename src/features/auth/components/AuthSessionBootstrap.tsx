@@ -23,6 +23,7 @@ const fallbackBootstrapError: NormalizedApiError = {
   message: "Khong the khoi phuc phien dang nhap. Vui long thu lai.",
   isAuthError: false,
   isNetworkError: false,
+  isRateLimitError: false,
   isServerError: false,
 };
 

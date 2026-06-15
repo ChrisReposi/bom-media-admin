@@ -1,7 +1,7 @@
 import axios from "axios";
 
 import { axiosBaseClient, axiosClient } from "@/lib/api/axiosClient";
-import { getApiErrorMessage } from "@/lib/api/apiError";
+import { getApiErrorMessage, normalizeApiError } from "@/lib/api/apiError";
 
 import { getAuthSessionSnapshot } from "./authSessionAccessor";
 import type {
@@ -48,6 +48,10 @@ function getSafeLoginErrorMessage(error: unknown): string {
 
   if (error.response.status === 401) {
     return "Ten dang nhap hoac mat khau khong dung.";
+  }
+
+  if (error.response.status === 429) {
+    return normalizeApiError(error).message;
   }
 
   return readApiMessage(error.response.data) ?? getApiErrorMessage(error);

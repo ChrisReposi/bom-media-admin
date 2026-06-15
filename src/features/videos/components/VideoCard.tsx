@@ -1,4 +1,11 @@
-import { Code2, Database, ImageOff, Trash2 } from "lucide-react";
+import {
+  Ban,
+  Code2,
+  Database,
+  ImageOff,
+  RefreshCw,
+  Server,
+} from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -10,14 +17,15 @@ import {
   formatViews,
   getProviderLabel,
 } from "../videoFormatters";
+import { getLocalVideoThumbnailBlob } from "../videoApi";
 import { getDefaultThumbnailUrlFromPlaybackUrl } from "../cloudinaryVideoUtils";
 import type { VideoAsset, VideoStatus } from "../videoTypes";
 
 type VideoCardProps = {
   video: VideoAsset;
   onOpen?: (video: VideoAsset) => void;
-  onDelete?: (video: VideoAsset) => void;
-  isDeleting?: boolean;
+  onRequestStatusToggle?: (video: VideoAsset) => void;
+  isStatusUpdating?: boolean;
 };
 
 const statusLabels: Record<VideoStatus, string> = {
@@ -52,13 +60,23 @@ function getStatusClass(status: VideoStatus): string {
 export function VideoCard({
   video,
   onOpen,
-  onDelete,
-  isDeleting,
+  onRequestStatusToggle,
+  isStatusUpdating,
 }: VideoCardProps) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const [localThumbnailObjectUrl, setLocalThumbnailObjectUrl] = useState<
+    string | null
+  >(null);
   const providerLabel = getProviderLabel(video.provider);
   const isEmbedVideo = video.sourceType === "EMBED" || Boolean(video.embedUrl);
   const isDatabaseVideo = video.sourceType === "DB_BLOB";
+  const isLocalFileVideo = video.sourceType === "LOCAL_FILE";
+  const canDisable = video.status === "READY";
+  const canRestore = video.status === "DISABLED";
+  const canToggleStatus = canDisable || canRestore;
+  const statusActionLabel = canRestore
+    ? "Kích hoạt lại video"
+    : "Vô hiệu hoá video";
   const publishedText = formatRelativeTime(video.publishedAt);
   const viewsText = formatViews(video.viewCount);
   const fallbackThumbnailUrl = useMemo(
@@ -68,22 +86,53 @@ export function VideoCard({
         : null,
     [video.playbackUrl],
   );
-  const thumbnailUrl = video.thumbnailUrl ?? fallbackThumbnailUrl;
+  const thumbnailUrl =
+    isLocalFileVideo && video.localThumbnailAsset
+      ? localThumbnailObjectUrl
+      : (video.thumbnailUrl ?? fallbackThumbnailUrl);
 
   useEffect(() => {
     setThumbnailFailed(false);
   }, [thumbnailUrl]);
 
-  function handleDelete(event: MouseEvent<HTMLButtonElement>): void {
-    event.stopPropagation();
-
-    const confirmed = window.confirm(
-      `Xóa video "${video.title}"? Video sẽ được chuyển sang trạng thái DISABLED.`,
-    );
-
-    if (confirmed) {
-      onDelete?.(video);
+  useEffect(() => {
+    if (!isLocalFileVideo || !video.localThumbnailAsset) {
+      setLocalThumbnailObjectUrl(null);
+      return;
     }
+
+    let isCancelled = false;
+    let nextObjectUrl: string | null = null;
+
+    setLocalThumbnailObjectUrl(null);
+
+    void getLocalVideoThumbnailBlob(video)
+      .then((blob) => {
+        if (isCancelled) {
+          return;
+        }
+
+        nextObjectUrl = URL.createObjectURL(blob);
+        setLocalThumbnailObjectUrl(nextObjectUrl);
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setLocalThumbnailObjectUrl(null);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+
+      if (nextObjectUrl !== null) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
+    };
+  }, [isLocalFileVideo, video]);
+
+  function handleStatusToggle(event: MouseEvent<HTMLButtonElement>): void {
+    event.stopPropagation();
+    onRequestStatusToggle?.(video);
   }
 
   return (
@@ -142,6 +191,11 @@ export function VideoCard({
             <Database className="size-3" />
             DB
           </span>
+        ) : isLocalFileVideo ? (
+          <span className="absolute left-2 bottom-2 inline-flex items-center gap-1 rounded-full bg-black/72 px-2 py-1 text-xs font-semibold text-white">
+            <Server className="size-3" />
+            Server
+          </span>
         ) : isEmbedVideo ? (
           <span className="absolute left-2 bottom-2 inline-flex items-center gap-1 rounded-full bg-black/72 px-2 py-1 text-xs font-semibold text-white">
             <Code2 className="size-3" />
@@ -161,14 +215,21 @@ export function VideoCard({
           </p>
         </div>
 
-        <button
-          aria-label={`Xóa video ${video.title}`}
-          disabled={isDeleting}
-          type="button"
-          onClick={handleDelete}
-        >
-          <Trash2 className="size-4" />
-        </button>
+        {canToggleStatus ? (
+          <button
+            aria-label={`${statusActionLabel} ${video.title}`}
+            disabled={isStatusUpdating}
+            title={statusActionLabel}
+            type="button"
+            onClick={handleStatusToggle}
+          >
+            {canRestore ? (
+              <RefreshCw className="size-4" />
+            ) : (
+              <Ban className="size-4" />
+            )}
+          </button>
+        ) : null}
       </div>
     </article>
   );

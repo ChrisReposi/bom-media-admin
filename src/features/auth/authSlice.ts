@@ -6,12 +6,13 @@ import {
 
 import { normalizeApiError, type NormalizedApiError } from "@/lib/api/apiError";
 
-import { loginAdmin, refreshAdminSession } from "./authApi";
+import { loginAdmin, logoutAdmin, refreshAdminSession } from "./authApi";
 import type {
   AdminAuthTokens,
   AuthState,
   LoginAdminRequest,
   LoginAdminResponse,
+  LogoutAdminResponse,
   RefreshAdminTokenRequest,
   RefreshAdminTokenResponse,
   SafeAdmin,
@@ -26,6 +27,16 @@ const initialState: AuthState = {
   status: "idle",
   error: null,
   isAuthenticated: false,
+};
+
+type AuthThunkState = {
+  auth: AuthState;
+};
+
+export type LogoutAdminThunkResult = {
+  revokeAttempted: boolean;
+  revokeConfirmed: boolean;
+  message: string;
 };
 
 export const loginAdminThunk = createAsyncThunk<
@@ -54,6 +65,44 @@ export const bootstrapAdminSessionThunk = createAsyncThunk<
     return await refreshAdminSession(payload);
   } catch (error) {
     return rejectWithValue(normalizeApiError(error));
+  }
+});
+
+export const logoutAdminThunk = createAsyncThunk<
+  LogoutAdminThunkResult,
+  void,
+  { state: AuthThunkState }
+>("auth/logoutAdmin", async (_, { getState }) => {
+  const refreshToken = getState().auth.refreshToken;
+
+  if (!refreshToken) {
+    return {
+      revokeAttempted: false,
+      revokeConfirmed: false,
+      message: "Đã đăng xuất khỏi trình duyệt này.",
+    };
+  }
+
+  try {
+    const response: LogoutAdminResponse = await logoutAdmin({ refreshToken });
+
+    return {
+      revokeAttempted: true,
+      revokeConfirmed: true,
+      message: response.message || "Đã đăng xuất.",
+    };
+  } catch (error) {
+    const normalizedError = normalizeApiError(error);
+    const cannotConfirmMessage =
+      "Đã đăng xuất khỏi trình duyệt này. Không thể xác nhận thu hồi phiên trên máy chủ, vui lòng đăng nhập lại nếu cần.";
+
+    return {
+      revokeAttempted: true,
+      revokeConfirmed: false,
+      message: normalizedError.isRateLimitError
+        ? "Đã đăng xuất khỏi trình duyệt này. Có quá nhiều yêu cầu nên chưa thể xác nhận thu hồi phiên trên máy chủ."
+        : cannotConfirmMessage,
+    };
   }
 });
 
@@ -164,6 +213,19 @@ const authSlice = createSlice({
         state.error =
           action.payload?.message ??
           "Không thể khôi phục phiên đăng nhập. Vui lòng thử lại.";
+      })
+      .addCase(logoutAdminThunk.pending, (state) => {
+        state.error = null;
+      })
+      .addCase(logoutAdminThunk.fulfilled, (state) => {
+        state.admin = null;
+        state.accessToken = null;
+        state.refreshToken = null;
+        state.tokenType = null;
+        state.expiresIn = null;
+        state.status = "idle";
+        state.error = null;
+        state.isAuthenticated = false;
       });
   },
 });
