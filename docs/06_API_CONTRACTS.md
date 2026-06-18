@@ -94,7 +94,15 @@ Admin Web env:
 
 ```env
 VITE_LOCAL_VIDEO_CHUNK_SIZE_MB=50
+# Optional local-only override for nested public static-site testing.
+VITE_PUBLIC_SHARE_BASE_URL=http://127.0.0.1:5500/bom-media-sites/mau-lam-xong/danny/refactored_danny_public_site
 ```
+
+`VITE_PUBLIC_SHARE_BASE_URL` is optional. When set, Admin Web rewrites newly
+created/listed public share URLs into hash-router-safe static SPA links such as
+`BASE_URL/#/s/<short-code>/videos`. Leave it unset in normal production root
+deployments so Admin Web derives the public site origin from the backend
+`publicUrl`.
 
 ## Websites
 

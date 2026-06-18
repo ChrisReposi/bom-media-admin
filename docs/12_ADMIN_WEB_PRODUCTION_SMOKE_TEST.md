@@ -70,6 +70,8 @@ Current Admin Web env surface:
 VITE_API_BASE_URL=https://api.example.com/api/v1
 VITE_APP_NAME=Video Share CMS Admin
 VITE_LOCAL_VIDEO_CHUNK_SIZE_MB=50
+# Optional local-only nested public-site preview override:
+# VITE_PUBLIC_SHARE_BASE_URL=http://127.0.0.1:5500/bom-media-sites/mau-lam-xong/danny/refactored_danny_public_site
 ```
 
 Rules:
@@ -78,6 +80,7 @@ Rules:
 - Do not put backend secrets in `VITE_*`.
 - Do not put Cloudinary API secret, JWT secret, database URL, refresh pepper, share-token pepper or access-log IP pepper in Admin Web env.
 - Keep `VITE_LOCAL_VIDEO_CHUNK_SIZE_MB` aligned with backend upload-session limits.
+- Keep `VITE_PUBLIC_SHARE_BASE_URL` unset in production unless the public static site is intentionally served from a non-root base path.
 - Admin Web env is public once built.
 
 ## 4. Deployment Smoke Test

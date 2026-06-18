@@ -2,6 +2,44 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-06-18 — Admin Web static-safe share URL normalization
+
+### Summary
+
+- Added an Admin Web share-link URL normalizer so backend `/s/<short-code>#/videos` URLs are displayed/copied as static hash-router URLs like `BASE_URL/#/s/<short-code>/videos`.
+- Applied normalization in the websites API adapter for newly created share links and share-link lists, keeping Dashboard and share-link card UI unchanged.
+- Added optional `VITE_PUBLIC_SHARE_BASE_URL` support for local nested public-site testing.
+
+### Changed
+
+- `.env.example`
+- `docs/.env.production.example`
+- `docs/06_API_CONTRACTS.md`
+- `docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md`
+- `src/features/websites/shareLinkUrlUtils.ts`
+- `src/features/websites/websiteApi.ts`
+- `src/vite-env.d.ts`
+- `session-log.md`
+
+### Verified
+
+- `yarn prettier --ignore-path ../../.prettierignore --write src/features/websites/websiteApi.ts src/features/websites/shareLinkUrlUtils.ts src/vite-env.d.ts docs/06_API_CONTRACTS.md docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md`
+- `yarn typecheck`
+- `yarn lint`
+- `yarn format:check`
+- `yarn build`
+- `yarn test`
+- `find . -maxdepth 3 \( -name package-lock.json -o -name pnpm-lock.yaml \) -print`
+- Typecheck, lint, format check, and build passed.
+- Build still reports the existing Vite large chunk warning.
+- `yarn test` ran the current placeholder script: `TODO_TEST: Admin web tests will be added later`.
+- No npm/pnpm lockfiles were found.
+
+### Pending
+
+- Manual browser verification: set `VITE_PUBLIC_SHARE_BASE_URL` to the local Danny public-site nested base, create a Dashboard share link, confirm the copied URL uses `/#/s/<short-code>/videos`, and open it in the public site.
+- Verify production keeps `VITE_PUBLIC_SHARE_BASE_URL` unset unless a public site is intentionally deployed below a non-root path.
+
 ## 2026-06-15 — Remove unused Cloudinary and Legacy DB create modes
 
 ### Summary

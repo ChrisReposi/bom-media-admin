@@ -1,5 +1,6 @@
 import { axiosClient } from "@/lib/api/axiosClient";
 import { getApiErrorMessage } from "@/lib/api/apiError";
+import { normalizePublicShareUrl } from "./shareLinkUrlUtils";
 
 import type {
   ActivateWebsiteDomainPayload,
@@ -11,6 +12,7 @@ import type {
   CreateWebsitePayload,
   DomainGroupsListResponse,
   DomainGroupStatus,
+  ShareLink,
   ShareLinksListResponse,
   UpdateWebsiteDomainPayload,
   UpdateWebsitePayload,
@@ -73,6 +75,30 @@ export async function getWebsiteById(id: string): Promise<Website> {
   const response = await axiosClient.get<Website>(`/admin/websites/${id}`);
 
   return response.data;
+}
+
+function normalizeCreateShareLinkResponse(
+  data: CreateShareLinkResponse,
+): CreateShareLinkResponse {
+  const publicUrl =
+    normalizePublicShareUrl(data.publicUrl) ??
+    normalizePublicShareUrl(data.shareLink.publicUrl);
+
+  return {
+    ...data,
+    publicUrl,
+    shareLink: {
+      ...data.shareLink,
+      publicUrl: normalizePublicShareUrl(data.shareLink.publicUrl) ?? publicUrl,
+    },
+  };
+}
+
+function normalizeShareLinkResponse(shareLink: ShareLink): ShareLink {
+  return {
+    ...shareLink,
+    publicUrl: normalizePublicShareUrl(shareLink.publicUrl),
+  };
 }
 
 export async function createWebsite(
@@ -241,7 +267,7 @@ export async function createShareLink(
     payload,
   );
 
-  return response.data;
+  return normalizeCreateShareLinkResponse(response.data);
 }
 
 export async function getShareLinks(
@@ -251,7 +277,10 @@ export async function getShareLinks(
     `/admin/websites/${websiteId}/share-links`,
   );
 
-  return response.data;
+  return {
+    ...response.data,
+    items: response.data.items.map(normalizeShareLinkResponse),
+  };
 }
 
 export async function revokeShareLink(

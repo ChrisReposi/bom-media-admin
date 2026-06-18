@@ -34,7 +34,7 @@ export function WebsiteQuickSelect({
   };
 
   return (
-    <div className="grid gap-3 md:grid-cols-1">
+    <div className="grid gap-3 md:grid-cols-1 max-h-105 overflow-y-auto pr-2 scrollbar-gutter-stable md:max-h-172.5 xl:max-h-140">
       {websites.map((website) => {
         const primaryDomain =
           website.domains.find(
