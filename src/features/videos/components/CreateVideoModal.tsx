@@ -26,6 +26,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { isApiRequestCanceled } from "@/lib/api/apiError";
 import { cn } from "@/lib/utils";
 
 import {
@@ -1007,7 +1008,7 @@ export function CreateVideoModal({
       localUploadAbortControllerRef.current = null;
       setLocalUploadProgress(null);
 
-      if (error instanceof DOMException && error.name === "AbortError") {
+      if (isApiRequestCanceled(error)) {
         return;
       }
 

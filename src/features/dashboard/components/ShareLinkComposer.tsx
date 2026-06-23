@@ -4,20 +4,32 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { VideoAsset } from "@/features/videos/videoTypes";
-import type { Website } from "@/features/websites/websiteTypes";
+import type {
+  CreateShareLinkResponse,
+  Website,
+} from "@/features/websites/websiteTypes";
 import type { ShareLinkComposerPayload } from "../dashboardTypes";
 import { ReadyVideoPicker } from "./ReadyVideoPicker";
 import { WebsiteQuickSelect } from "./WebsiteQuickSelect";
+import { CreatedShareLinkCard } from "./CreatedShareLinkCard";
 
 type ShareLinkComposerProps = {
   websites: Website[];
   videos: VideoAsset[];
+  totalVideos: number;
   selectedWebsiteId: string;
   selectedVideoIds: string[];
   isSubmitting: boolean;
+  isVideoRefreshing: boolean;
+  isLoadingMoreVideos: boolean;
+  hasMoreVideos: boolean;
+  videoSearchQuery: string;
   onWebsiteChange: (websiteId: string) => void;
   onVideoToggle: (videoId: string) => void;
+  onVideoSearchChange: (query: string) => void;
+  onLoadMoreVideos: () => void;
   onSubmit: (payload: ShareLinkComposerPayload) => Promise<void>;
+  createdShareLink: CreateShareLinkResponse | null;
 };
 
 const adminInputClass = [
@@ -42,18 +54,25 @@ function preventSearchEnterSubmit(
 export function ShareLinkComposer({
   websites,
   videos,
+  totalVideos,
   selectedWebsiteId,
   selectedVideoIds,
   isSubmitting,
+  isVideoRefreshing,
+  isLoadingMoreVideos,
+  hasMoreVideos,
+  videoSearchQuery,
   onWebsiteChange,
   onVideoToggle,
+  onVideoSearchChange,
+  onLoadMoreVideos,
   onSubmit,
+  createdShareLink,
 }: ShareLinkComposerProps) {
   const [label, setLabel] = useState("");
   const [maxViews, setMaxViews] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [websiteSearch, setWebsiteSearch] = useState("");
-  const [videoSearch, setVideoSearch] = useState("");
   const filteredWebsites = useMemo(() => {
     const keyword = normalizeSearchText(websiteSearch);
 
@@ -65,24 +84,11 @@ export function ShareLinkComposer({
       website.name.toLowerCase().includes(keyword),
     );
   }, [websiteSearch, websites]);
-  const filteredVideos = useMemo(() => {
-    const keyword = normalizeSearchText(videoSearch);
-
-    if (!keyword) {
-      return videos;
-    }
-
-    return videos.filter((video) =>
-      video.title.toLowerCase().includes(keyword),
-    );
-  }, [videoSearch, videos]);
   const selectedVideoCount = selectedVideoIds.length;
   const totalWebsiteCount = websites.length;
-  const totalVideoCount = videos.length;
   const filteredWebsiteCount = filteredWebsites.length;
-  const filteredVideoCount = filteredVideos.length;
   const websiteSearchQuery = websiteSearch.trim();
-  const videoSearchQuery = videoSearch.trim();
+  const trimmedVideoSearchQuery = videoSearchQuery.trim();
   const isSelectedWebsiteHidden =
     websiteSearchQuery.length > 0 &&
     Boolean(selectedWebsiteId) &&
@@ -169,28 +175,30 @@ export function ShareLinkComposer({
                 Chọn video
               </h2>
               <p className="text-left text-sm text-(--admin-text-muted)">
-                {videoSearchQuery
-                  ? `${filteredVideoCount}/${totalVideoCount} videos`
-                  : `${totalVideoCount} videos`}
+                {videos.length}/{totalVideos} videos
               </p>
             </div>
 
             <div className="relative w-full max-w-[50%]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--admin-text-muted)" />
+              {isVideoRefreshing ? (
+                <Loader2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-(--admin-text-muted)" />
+              ) : (
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--admin-text-muted)" />
+              )}
               <Input
                 aria-label="Tìm video theo tiêu đề"
                 className={[adminInputClass, "pl-9 pr-9"].join(" ")}
                 placeholder="Tìm video..."
-                value={videoSearch}
-                onChange={(event) => setVideoSearch(event.target.value)}
+                value={videoSearchQuery}
+                onChange={(event) => onVideoSearchChange(event.target.value)}
                 onKeyDown={preventSearchEnterSubmit}
               />
-              {videoSearch ? (
+              {videoSearchQuery ? (
                 <button
                   aria-label="Xóa tìm kiếm video"
                   className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-(--admin-text-muted) transition hover:bg-(--admin-surface-alt) hover:text-(--admin-text-strong)"
                   type="button"
-                  onClick={() => setVideoSearch("")}
+                  onClick={() => onVideoSearchChange("")}
                 >
                   <X className="size-4" />
                 </button>
@@ -199,74 +207,85 @@ export function ShareLinkComposer({
           </div>
 
           <ReadyVideoPicker
-            searchQuery={videoSearchQuery}
+            hasMore={hasMoreVideos}
+            isLoadingMore={isLoadingMoreVideos}
+            searchQuery={trimmedVideoSearchQuery}
             selectedVideoIds={selectedVideoIds}
-            totalVideos={totalVideoCount}
-            videos={filteredVideos}
+            totalVideos={totalVideos}
+            videos={videos}
+            onLoadMore={onLoadMoreVideos}
             onToggle={onVideoToggle}
           />
         </section>
       </div>
 
-      <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <Link2 className="size-4 text-(--admin-primary)" />
-          <h2 className="text-lg font-semibold text-(--admin-text-strong)">
-            Tùy chọn share link
-          </h2>
-        </div>
+      <div className="flex flex-row items-start gap-4">
+        <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm min-w-[50%]">
+          <div className="flex flex-row items-start justify-between mb-4">
+            <div className="mb-4 flex items-center gap-2">
+              <Link2 className="size-4 text-(--admin-primary)" />
+              <h2 className="text-lg font-semibold text-(--admin-text-strong)">
+                Tùy chọn share link
+              </h2>
+            </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
-            <span className="mb-2 block">Label</span>
-            <Input
-              id="labelInput"
-              className={adminInputClass}
-              placeholder="Send to customer A"
-              value={label}
-              onChange={(event) => setLabel(event.target.value)}
-            />
-          </label>
+            <Button className="" disabled={!canSubmit} type="submit">
+              {isSubmitting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Link2 className="size-4" />
+              )}
+              Tạo share link
+            </Button>
+          </div>
 
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
-            <span className="mb-2 block">Max views</span>
-            <Input
-              id="maxViewsInput"
-              className={adminInputClass}
-              min={1}
-              type="number"
-              value={maxViews}
-              onChange={(event) => setMaxViews(event.target.value)}
-            />
-          </label>
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="block text-sm font-medium text-(--admin-text-strong)">
+              <span className="mb-2 block">Label</span>
+              <Input
+                id="labelInput"
+                className={adminInputClass}
+                placeholder="Send to customer A"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+              />
+            </label>
 
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
-            <span className="mb-2 block">Expires at</span>
-            <Input
-              id="expiresAtInput"
-              className={adminInputClass}
-              type="datetime-local"
-              value={expiresAt}
-              onChange={(event) => setExpiresAt(event.target.value)}
-            />
-          </label>
-        </div>
+            <label className="block text-sm font-medium text-(--admin-text-strong)">
+              <span className="mb-2 block">Max views</span>
+              <Input
+                id="maxViewsInput"
+                className={adminInputClass}
+                min={1}
+                type="number"
+                value={maxViews}
+                onChange={(event) => setMaxViews(event.target.value)}
+              />
+            </label>
 
-        {selectedVideoCount === 0 ? (
-          <p className="mt-3 text-sm text-(--admin-text-muted)">
-            Vui lòng chọn ít nhất một video để tạo share link.
-          </p>
+            <label className="block text-sm font-medium text-(--admin-text-strong)">
+              <span className="mb-2 block">Expires at</span>
+              <Input
+                id="expiresAtInput"
+                className={adminInputClass}
+                type="datetime-local"
+                value={expiresAt}
+                onChange={(event) => setExpiresAt(event.target.value)}
+              />
+            </label>
+          </div>
+
+          {selectedVideoCount === 0 ? (
+            <p className="mt-3 text-sm text-(--admin-text-muted)">
+              Vui lòng chọn ít nhất một video để tạo share link.
+            </p>
+          ) : null}
+        </section>
+
+        {createdShareLink ? (
+          <CreatedShareLinkCard shareLink={createdShareLink} />
         ) : null}
-
-        <Button className="mt-4" disabled={!canSubmit} type="submit">
-          {isSubmitting ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Link2 className="size-4" />
-          )}
-          Tạo share link
-        </Button>
-      </section>
+      </div>
     </form>
   );
 }

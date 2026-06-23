@@ -306,7 +306,7 @@ export async function getLocalVideoFileBlob(video: VideoAsset): Promise<Blob> {
 }
 
 export async function getLocalVideoThumbnailBlob(
-  video: VideoAsset,
+  video: Pick<VideoAsset, "id" | "thumbnailUrl">,
 ): Promise<Blob> {
   const url = buildApiResourceUrl(
     video.thumbnailUrl ?? `/admin/videos/${video.id}/thumbnail`,

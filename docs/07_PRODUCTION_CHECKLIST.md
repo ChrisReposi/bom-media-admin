@@ -57,6 +57,9 @@ docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
 - [ ] Disable copy clearly states storage files are not deleted.
 - [ ] Purge confirmation can permanently delete an unused LOCAL_FILE video.
 - [ ] CSP/security headers added.
+- [ ] Route/page chunks load on demand and create/edit video modals remain functional.
+- [ ] `index.html` is no-cache/no-store and `/assets/*` is one-year immutable.
+- [ ] Admin API and authenticated media responses are not publicly cached.
 - [ ] No secrets in built files.
 - [ ] Build passes.
 
@@ -114,7 +117,8 @@ docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
 - [ ] Domain group full UI.
 - [ ] Role-aware admin UI.
 - [ ] E2E tests.
-- [ ] Bundle splitting.
+- [x] Route-level bundle splitting and lazy heavy video modals.
+- [ ] Revisit deeper vendor/manual chunk tuning only if production measurements justify it.
 - [ ] Dependency audit automation.
 - [ ] Monthly restore drill schedule.
 

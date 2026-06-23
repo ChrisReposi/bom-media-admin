@@ -7,13 +7,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { LazyModalFallback } from "@/components/common/LazyModalFallback";
 import { Input } from "@/components/ui/input";
-import { EditVideoModal } from "@/features/videos/components/EditVideoModal";
 import { VideoDetailErrorState } from "@/features/videos/components/VideoDetailErrorState";
 import { VideoDetailSkeleton } from "@/features/videos/components/VideoDetailSkeleton";
 import { VideoInfoPanel } from "@/features/videos/components/VideoInfoPanel";
@@ -33,6 +33,12 @@ import type {
   VideoStatus,
 } from "@/features/videos/videoTypes";
 import { cn } from "@/lib/utils";
+
+const LazyEditVideoModal = lazy(() =>
+  import("@/features/videos/components/EditVideoModal").then((module) => ({
+    default: module.EditVideoModal,
+  })),
+);
 
 const statusLabels: Record<VideoStatus, string> = {
   DISABLED: "Đã tắt",
@@ -334,15 +340,23 @@ export function VideoDetailPage() {
         ) : null}
       </section>
 
-      <EditVideoModal
-        open={editOpen}
-        video={video}
-        onOpenChange={setEditOpen}
-        onUpdated={(updatedVideo) => {
-          setVideo(updatedVideo);
-          void fetchVideo();
-        }}
-      />
+      {editOpen ? (
+        <Suspense
+          fallback={
+            <LazyModalFallback label="Đang tải biểu mẫu chỉnh sửa..." />
+          }
+        >
+          <LazyEditVideoModal
+            open
+            video={video}
+            onOpenChange={setEditOpen}
+            onUpdated={(updatedVideo) => {
+              setVideo(updatedVideo);
+              void fetchVideo();
+            }}
+          />
+        </Suspense>
+      ) : null}
     </section>
   );
 }

@@ -3,11 +3,18 @@ import {
   Code2,
   Database,
   Link2,
+  Loader2,
   Server,
   VideoIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import {
+  acquireDashboardLocalThumbnail,
+  getDashboardThumbnailCacheKey,
+  type DashboardThumbnailLease,
+} from "@/features/dashboard/dashboardThumbnailCache";
 import {
   filterVideosBySource,
   getVideoSourceLabel,
@@ -18,7 +25,6 @@ import {
   isShareableVideo,
   type VideoSourceFilter,
 } from "@/features/videos/videoSourceUtils";
-import { getLocalVideoThumbnailBlob } from "@/features/videos/videoApi";
 import type { VideoAsset } from "@/features/videos/videoTypes";
 
 type ReadyVideoPickerProps = {
@@ -27,6 +33,9 @@ type ReadyVideoPickerProps = {
   onToggle: (videoId: string) => void;
   totalVideos?: number;
   searchQuery?: string;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
 };
 
 type FilterTab = {
@@ -41,8 +50,15 @@ export function ReadyVideoPicker({
   onToggle,
   totalVideos,
   searchQuery,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
 }: ReadyVideoPickerProps) {
   const [sourceFilter, setSourceFilter] = useState<VideoSourceFilter>("all");
+  const selectedVideoIdSet = useMemo(
+    () => new Set(selectedVideoIds),
+    [selectedVideoIds],
+  );
   const shareableVideos = useMemo(
     () => videos.filter(isShareableVideo),
     [videos],
@@ -114,156 +130,288 @@ export function ReadyVideoPicker({
         </p>
       </div>
 
-      {filteredVideos.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-(--admin-border) p-4 text-sm text-(--admin-text)">
-          {getEmptyStateText({
-            searchQuery,
-            shareableCount: shareableVideos.length,
-            sourceFilter,
-            titleFilteredCount: videos.length,
-            totalVideos: totalVideos ?? videos.length,
-          })}
-        </div>
-      ) : (
-        <div className="max-h-105 overflow-y-auto pr-2 scrollbar-gutter-stable md:max-h-172.5 xl:max-h-140">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {filteredVideos.map((video) => {
-              const isDisabled = !isShareableVideo(video);
-              const isSelected = selectedVideoIds.includes(video.id);
-              const sourceLabel = getVideoSourceLabel(video);
-
-              return (
-                <label
-                  key={video.id}
-                  className={[
-                    "group overflow-hidden rounded-lg border bg-(--admin-surface-alt) transition",
-                    isSelected
-                      ? "border-(--admin-primary)"
-                      : "border-(--admin-border) hover:border-(--admin-border-strong)",
-                    isDisabled
-                      ? "cursor-not-allowed opacity-60"
-                      : "cursor-pointer",
-                  ].join(" ")}
-                >
-                  <div className="relative aspect-video bg-(--admin-surface)">
-                    <ReadyVideoThumbnail video={video} />
-
-                    <input
-                      checked={isSelected}
-                      className="sr-only"
-                      disabled={isDisabled}
-                      type="checkbox"
-                      onChange={() => onToggle(video.id)}
-                    />
-
-                    {sourceLabel !== "Unknown" ? (
-                      <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/72 px-2 py-1 text-xs font-semibold text-white">
-                        {sourceLabel === "Embed" ? (
-                          <Code2 className="size-3" />
-                        ) : sourceLabel === "Database" ? (
-                          <Database className="size-3" />
-                        ) : sourceLabel === "Server" ? (
-                          <Server className="size-3" />
-                        ) : (
-                          <Link2 className="size-3" />
-                        )}
-                        {sourceLabel}
-                      </span>
-                    ) : null}
-
-                    {isSelected ? (
-                      <span className="absolute right-2 top-2 rounded-full bg-(--admin-primary) p-1 text-white">
-                        <CheckCircle2 className="size-4" />
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="p-3">
-                    <p className="line-clamp-2 min-h-10 text-sm font-semibold text-(--admin-text-strong)">
-                      {video.title}
-                    </p>
-                    <p className="mt-2 truncate font-mono text-xs text-(--admin-text-muted)">
-                      {video.id}
-                    </p>
-                  </div>
-                </label>
-              );
+      <div
+        className="max-h-105 overflow-y-auto pr-2 scrollbar-gutter-stable md:max-h-172.5 xl:max-h-140"
+        data-ready-video-scroll-root
+      >
+        {filteredVideos.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-(--admin-border) p-4 text-sm text-(--admin-text)">
+            {getEmptyStateText({
+              searchQuery,
+              shareableCount: shareableVideos.length,
+              sourceFilter,
+              titleFilteredCount: videos.length,
+              totalVideos: totalVideos ?? videos.length,
             })}
           </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {filteredVideos.map((video) => (
+              <ReadyVideoCard
+                key={video.id}
+                isSelected={selectedVideoIdSet.has(video.id)}
+                video={video}
+                onToggle={onToggle}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {hasMore ? (
+        <div className="flex justify-center pt-1">
+          <Button
+            disabled={isLoadingMore}
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={onLoadMore}
+          >
+            {isLoadingMore ? <Loader2 className="size-4 animate-spin" /> : null}
+            {isLoadingMore ? "Đang tải thêm..." : "Tải thêm video"}
+          </Button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
-function ReadyVideoThumbnail({ video }: { video: VideoAsset }) {
+type ReadyVideoCardProps = {
+  video: VideoAsset;
+  isSelected: boolean;
+  onToggle: (videoId: string) => void;
+};
+
+const ReadyVideoCard = memo(function ReadyVideoCard({
+  video,
+  isSelected,
+  onToggle,
+}: ReadyVideoCardProps) {
+  const isDisabled = !isShareableVideo(video);
+  const sourceLabel = getVideoSourceLabel(video);
+  const thumbnailCacheKey = getDashboardThumbnailCacheKey({
+    videoId: video.id,
+    thumbnailUrl: video.thumbnailUrl,
+    updatedAt: video.updatedAt,
+    checksumSha256: video.localThumbnailAsset?.checksumSha256,
+  });
+
+  return (
+    <label
+      className={[
+        "group overflow-hidden rounded-lg border bg-(--admin-surface-alt) transition",
+        isSelected
+          ? "border-(--admin-primary)"
+          : "border-(--admin-border) hover:border-(--admin-border-strong)",
+        isDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+      ].join(" ")}
+    >
+      <div className="relative aspect-video bg-(--admin-surface)">
+        <ReadyVideoThumbnail
+          key={thumbnailCacheKey}
+          checksumSha256={video.localThumbnailAsset?.checksumSha256}
+          hasLocalThumbnail={Boolean(video.localThumbnailAsset)}
+          sourceType={video.sourceType}
+          thumbnailUrl={video.thumbnailUrl}
+          title={video.title}
+          updatedAt={video.updatedAt}
+          videoId={video.id}
+        />
+
+        <input
+          checked={isSelected}
+          className="sr-only"
+          disabled={isDisabled}
+          type="checkbox"
+          onChange={() => onToggle(video.id)}
+        />
+
+        {sourceLabel !== "Unknown" ? (
+          <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/72 px-2 py-1 text-xs font-semibold text-white">
+            {sourceLabel === "Embed" ? (
+              <Code2 className="size-3" />
+            ) : sourceLabel === "Database" ? (
+              <Database className="size-3" />
+            ) : sourceLabel === "Server" ? (
+              <Server className="size-3" />
+            ) : (
+              <Link2 className="size-3" />
+            )}
+            {sourceLabel}
+          </span>
+        ) : null}
+
+        {isSelected ? (
+          <span className="absolute right-2 top-2 rounded-full bg-(--admin-primary) p-1 text-white">
+            <CheckCircle2 className="size-4" />
+          </span>
+        ) : null}
+      </div>
+
+      <div className="p-3">
+        <p className="line-clamp-2 min-h-10 text-sm font-semibold text-(--admin-text-strong)">
+          {video.title}
+        </p>
+        <p className="mt-2 truncate font-mono text-xs text-(--admin-text-muted)">
+          {video.id}
+        </p>
+      </div>
+    </label>
+  );
+});
+
+type ReadyVideoThumbnailProps = {
+  videoId: string;
+  title: string;
+  sourceType: VideoAsset["sourceType"];
+  thumbnailUrl: string | null;
+  updatedAt: string;
+  checksumSha256?: string | null;
+  hasLocalThumbnail: boolean;
+};
+
+const ReadyVideoThumbnail = memo(function ReadyVideoThumbnail({
+  videoId,
+  title,
+  sourceType,
+  thumbnailUrl,
+  updatedAt,
+  checksumSha256,
+  hasLocalThumbnail,
+}: ReadyVideoThumbnailProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [localThumbnailObjectUrl, setLocalThumbnailObjectUrl] = useState<
     string | null
   >(null);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
-  const isLocalFile = isLocalFileVideo(video);
-  const thumbnailUrl =
-    isLocalFile && video.localThumbnailAsset
-      ? localThumbnailObjectUrl
-      : video.thumbnailUrl;
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const isProtectedLocalThumbnail =
+    sourceType === "LOCAL_FILE" && hasLocalThumbnail;
+  const resolvedThumbnailUrl = isProtectedLocalThumbnail
+    ? localThumbnailObjectUrl
+    : getSafeThumbnailUrl(thumbnailUrl);
+  const cacheKey = getDashboardThumbnailCacheKey({
+    videoId,
+    thumbnailUrl,
+    updatedAt,
+    checksumSha256,
+  });
 
   useEffect(() => {
     setThumbnailFailed(false);
-  }, [thumbnailUrl]);
+  }, [cacheKey, resolvedThumbnailUrl]);
 
   useEffect(() => {
-    if (!isLocalFile || !video.localThumbnailAsset) {
-      setLocalThumbnailObjectUrl(null);
+    if (!isProtectedLocalThumbnail) {
+      return;
+    }
+
+    const element = containerRef.current;
+
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setIsNearViewport(true);
+      return;
+    }
+
+    const scrollRoot = element.closest<HTMLElement>(
+      "[data-ready-video-scroll-root]",
+    );
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      {
+        root: scrollRoot,
+        rootMargin: "250px",
+      },
+    );
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [isProtectedLocalThumbnail]);
+
+  useEffect(() => {
+    if (!isProtectedLocalThumbnail || !isNearViewport) {
       return;
     }
 
     let isCancelled = false;
-    let nextObjectUrl: string | null = null;
+    let lease: DashboardThumbnailLease | null = null;
 
     setLocalThumbnailObjectUrl(null);
 
-    void getLocalVideoThumbnailBlob(video)
-      .then((blob) => {
-        if (isCancelled) {
-          return;
-        }
+    void acquireDashboardLocalThumbnail({
+      videoId,
+      thumbnailUrl,
+      updatedAt,
+      checksumSha256,
+    }).then((nextLease) => {
+      if (isCancelled) {
+        nextLease?.release();
+        return;
+      }
 
-        nextObjectUrl = URL.createObjectURL(blob);
-        setLocalThumbnailObjectUrl(nextObjectUrl);
-      })
-      .catch(() => {
-        if (!isCancelled) {
-          setLocalThumbnailObjectUrl(null);
-        }
-      });
+      lease = nextLease;
+
+      if (nextLease) {
+        setLocalThumbnailObjectUrl(nextLease.objectUrl);
+        setThumbnailFailed(false);
+      } else {
+        setThumbnailFailed(true);
+      }
+    });
 
     return () => {
       isCancelled = true;
-
-      if (nextObjectUrl !== null) {
-        URL.revokeObjectURL(nextObjectUrl);
-      }
+      lease?.release();
     };
-  }, [isLocalFile, video]);
-
-  if (thumbnailUrl && !thumbnailFailed) {
-    return (
-      <img
-        alt={video.title}
-        className="size-full object-cover"
-        decoding="async"
-        loading="lazy"
-        src={thumbnailUrl}
-        onError={() => setThumbnailFailed(true)}
-      />
-    );
-  }
+  }, [
+    cacheKey,
+    checksumSha256,
+    isNearViewport,
+    isProtectedLocalThumbnail,
+    thumbnailUrl,
+    updatedAt,
+    videoId,
+  ]);
 
   return (
-    <div className="flex size-full items-center justify-center text-(--admin-text-muted)">
-      <VideoIcon className="size-8" />
+    <div ref={containerRef} className="size-full">
+      {resolvedThumbnailUrl && !thumbnailFailed ? (
+        <img
+          alt={title}
+          className="size-full object-cover"
+          decoding="async"
+          loading="lazy"
+          src={resolvedThumbnailUrl}
+          onError={() => setThumbnailFailed(true)}
+        />
+      ) : (
+        <div className="flex size-full items-center justify-center text-(--admin-text-muted)">
+          <VideoIcon className="size-8" />
+        </div>
+      )}
     </div>
   );
+});
+
+function getSafeThumbnailUrl(thumbnailUrl: string | null): string | null {
+  const value = thumbnailUrl?.trim();
+
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 function getEmptyStateText(params: {
@@ -273,12 +421,12 @@ function getEmptyStateText(params: {
   shareableCount: number;
   sourceFilter: VideoSourceFilter;
 }): string {
-  if (params.totalVideos === 0) {
-    return "Chưa có video READY nào.";
-  }
-
   if (params.searchQuery && params.titleFilteredCount === 0) {
     return `Không tìm thấy video phù hợp với từ khóa "${params.searchQuery}".`;
+  }
+
+  if (params.totalVideos === 0) {
+    return "Chưa có video READY nào.";
   }
 
   if (params.sourceFilter === "link") {

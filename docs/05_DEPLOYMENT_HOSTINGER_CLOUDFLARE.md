@@ -91,19 +91,25 @@ Cloudflare Worker should:
 
 ## Caching Rules
 
-Cache:
+Admin Web static caching:
 
-- public static assets
-- CSS/JS/images
-- thumbnails if public and non-private
-- generic public assets
+- `index.html` and SPA HTML fallbacks: `Cache-Control: no-cache, no-store, must-revalidate`.
+- hashed files under `/assets/*`: `Cache-Control: public, max-age=31536000, immutable`.
+- deploy the generated `dist/.htaccess` and `dist/assets/.htaccess` files to Hostinger with the rest of `dist/`; hidden files must not be skipped by the upload tool.
+- if Cloudflare cache rules override origin headers, create explicit rules with the same behavior and place the HTML bypass/no-cache rule before the immutable asset rule.
 
-Do not cache:
+Do not cache as public static content:
 
 - admin API responses
 - login/refresh/logout
+- authenticated thumbnail/media Blob responses
 - public watch token exchange
 - private media responses unless URL is signed and cache design is explicit
+
+Admin API responses should remain `private, no-store` or otherwise uncached at
+the backend/proxy layer. The Admin Web `.htaccess` files apply only to static
+hosting and must not be used to make authenticated API/media responses
+cacheable.
 
 ## WAF and Rate Limit Rules
 
@@ -147,6 +153,9 @@ yarn build
 # upload dist/ to Hostinger static hosting
 ```
 
+The production build keeps source maps disabled and emits hashed route/page
+chunks. Confirm that the Hostinger uploader includes both `.htaccess` files.
+
 Public sites:
 
 ```bash
@@ -168,6 +177,10 @@ Backend:
 
 - [ ] Build Admin Web.
 - [ ] Upload static assets.
+- [ ] Upload `dist/.htaccess` and `dist/assets/.htaccess`.
+- [ ] Verify `index.html` is not long-cached.
+- [ ] Verify `/assets/*` uses one-year immutable browser caching.
+- [ ] Verify admin API and authenticated media responses are not publicly cached.
 - [ ] Configure Cloudflare DNS.
 - [ ] Enable Cloudflare Access for admin domain.
 - [ ] Configure WAF/rate limits.

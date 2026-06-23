@@ -7,8 +7,13 @@ import {
   Server,
 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  acquireDashboardLocalThumbnail,
+  getDashboardThumbnailCacheKey,
+  type DashboardThumbnailLease,
+} from "@/features/dashboard/dashboardThumbnailCache";
 import { cn } from "@/lib/utils";
 
 import {
@@ -17,7 +22,6 @@ import {
   formatViews,
   getProviderLabel,
 } from "../videoFormatters";
-import { getLocalVideoThumbnailBlob } from "../videoApi";
 import { getDefaultThumbnailUrlFromPlaybackUrl } from "../cloudinaryVideoUtils";
 import type { VideoAsset, VideoStatus } from "../videoTypes";
 
@@ -67,10 +71,15 @@ export function VideoCard({
   const [localThumbnailObjectUrl, setLocalThumbnailObjectUrl] = useState<
     string | null
   >(null);
+  const [isThumbnailNearViewport, setIsThumbnailNearViewport] = useState(false);
+  const thumbnailContainerRef = useRef<HTMLDivElement | null>(null);
   const providerLabel = getProviderLabel(video.provider);
   const isEmbedVideo = video.sourceType === "EMBED" || Boolean(video.embedUrl);
   const isDatabaseVideo = video.sourceType === "DB_BLOB";
   const isLocalFileVideo = video.sourceType === "LOCAL_FILE";
+  const hasLocalThumbnail = Boolean(video.localThumbnailAsset);
+  const localThumbnailChecksum =
+    video.localThumbnailAsset?.checksumSha256 ?? null;
   const canDisable = video.status === "READY";
   const canRestore = video.status === "DISABLED";
   const canToggleStatus = canDisable || canRestore;
@@ -90,45 +99,91 @@ export function VideoCard({
     isLocalFileVideo && video.localThumbnailAsset
       ? localThumbnailObjectUrl
       : (video.thumbnailUrl ?? fallbackThumbnailUrl);
+  const thumbnailCacheKey = getDashboardThumbnailCacheKey({
+    videoId: video.id,
+    thumbnailUrl: video.thumbnailUrl,
+    updatedAt: video.updatedAt,
+    checksumSha256: localThumbnailChecksum,
+  });
 
   useEffect(() => {
     setThumbnailFailed(false);
   }, [thumbnailUrl]);
 
   useEffect(() => {
-    if (!isLocalFileVideo || !video.localThumbnailAsset) {
-      setLocalThumbnailObjectUrl(null);
+    if (!isLocalFileVideo || !hasLocalThumbnail) {
+      return;
+    }
+
+    const element = thumbnailContainerRef.current;
+
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setIsThumbnailNearViewport(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsThumbnailNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      {
+        rootMargin: "250px",
+      },
+    );
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [hasLocalThumbnail, isLocalFileVideo, thumbnailCacheKey]);
+
+  useEffect(() => {
+    if (!isLocalFileVideo || !hasLocalThumbnail || !isThumbnailNearViewport) {
       return;
     }
 
     let isCancelled = false;
-    let nextObjectUrl: string | null = null;
+    let lease: DashboardThumbnailLease | null = null;
 
     setLocalThumbnailObjectUrl(null);
 
-    void getLocalVideoThumbnailBlob(video)
-      .then((blob) => {
-        if (isCancelled) {
-          return;
-        }
+    void acquireDashboardLocalThumbnail({
+      videoId: video.id,
+      thumbnailUrl: video.thumbnailUrl,
+      updatedAt: video.updatedAt,
+      checksumSha256: localThumbnailChecksum,
+    }).then((nextLease) => {
+      if (isCancelled) {
+        nextLease?.release();
+        return;
+      }
 
-        nextObjectUrl = URL.createObjectURL(blob);
-        setLocalThumbnailObjectUrl(nextObjectUrl);
-      })
-      .catch(() => {
-        if (!isCancelled) {
-          setLocalThumbnailObjectUrl(null);
-        }
-      });
+      lease = nextLease;
+
+      if (nextLease) {
+        setLocalThumbnailObjectUrl(nextLease.objectUrl);
+        setThumbnailFailed(false);
+      } else {
+        setThumbnailFailed(true);
+      }
+    });
 
     return () => {
       isCancelled = true;
-
-      if (nextObjectUrl !== null) {
-        URL.revokeObjectURL(nextObjectUrl);
-      }
+      lease?.release();
     };
-  }, [isLocalFileVideo, video]);
+  }, [
+    hasLocalThumbnail,
+    isLocalFileVideo,
+    isThumbnailNearViewport,
+    localThumbnailChecksum,
+    thumbnailCacheKey,
+    video.id,
+    video.thumbnailUrl,
+    video.updatedAt,
+  ]);
 
   function handleStatusToggle(event: MouseEvent<HTMLButtonElement>): void {
     event.stopPropagation();
@@ -155,7 +210,10 @@ export function VideoCard({
         }
       }}
     >
-      <div className="relative aspect-video overflow-hidden bg-(--admin-surface-alt)">
+      <div
+        ref={thumbnailContainerRef}
+        className="relative aspect-video overflow-hidden bg-(--admin-surface-alt)"
+      >
         {thumbnailUrl && !thumbnailFailed ? (
           <img
             alt={video.title}

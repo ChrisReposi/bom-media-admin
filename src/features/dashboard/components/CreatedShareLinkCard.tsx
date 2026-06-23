@@ -24,21 +24,24 @@ export function CreatedShareLinkCard({ shareLink }: CreatedShareLinkCardProps) {
   }
 
   return (
-    <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm">
-      <div className="mb-4 flex items-center gap-2">
-        <ExternalLink className="size-4 text-(--admin-primary)" />
-        <h2 className="text-lg font-semibold text-(--admin-text-strong)">
-          Public URL vừa tạo
-        </h2>
+    <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm min-w-[35%]">
+      <div className="flex flex-row items-start justify-between mb-7">
+        <div className="flex items-center gap-2">
+          <ExternalLink className="size-4 text-(--admin-primary)" />
+          <h2 className="text-lg font-semibold text-(--admin-text-strong)">
+            Public URL vừa tạo
+          </h2>
+        </div>
+
+        <Button type="button" onClick={() => void handleCopy()}>
+          <Copy className="size-4" />
+          Copy public URL
+        </Button>
       </div>
 
       {shareLink.publicUrl ? (
         <div className="space-y-3">
           <Input readOnly value={shareLink.publicUrl} />
-          <Button type="button" onClick={() => void handleCopy()}>
-            <Copy className="size-4" />
-            Copy public URL
-          </Button>
         </div>
       ) : (
         <div className="space-y-3 rounded-md border border-(--admin-warning-soft) bg-(--admin-warning-soft) p-3 text-sm text-(--admin-text)">

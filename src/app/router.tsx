@@ -1,17 +1,48 @@
+import { lazy, Suspense, type ReactNode } from "react";
 import { createBrowserRouter } from "react-router-dom";
 
+import { RouteLoadingFallback } from "@/components/common/RouteLoadingFallback";
 import { MainLayout } from "@/layouts/MainLayout";
-import { DashboardPage } from "@/pages/DashboardPage";
-import { DomainsPage } from "@/pages/DomainsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { VideoDetailPage } from "@/pages/VideoDetailPage";
-import { VideosPage } from "@/pages/VideosPage";
-import { WebsitesPage } from "@/pages/WebsitesPage";
-import LoginPage from "@/pages/LoginPage";
 
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { PublicOnlyRoute } from "./routes/PublicOnlyRoute";
+
+const LoginPage = lazy(() => import("@/pages/LoginPage"));
+const DashboardPage = lazy(() =>
+  import("@/pages/DashboardPage").then((module) => ({
+    default: module.DashboardPage,
+  })),
+);
+const VideosPage = lazy(() =>
+  import("@/pages/VideosPage").then((module) => ({
+    default: module.VideosPage,
+  })),
+);
+const VideoDetailPage = lazy(() =>
+  import("@/pages/VideoDetailPage").then((module) => ({
+    default: module.VideoDetailPage,
+  })),
+);
+const WebsitesPage = lazy(() =>
+  import("@/pages/WebsitesPage").then((module) => ({
+    default: module.WebsitesPage,
+  })),
+);
+const DomainsPage = lazy(() =>
+  import("@/pages/DomainsPage").then((module) => ({
+    default: module.DomainsPage,
+  })),
+);
+const SettingsPage = lazy(() =>
+  import("@/pages/SettingsPage").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
+
+function withRouteFallback(element: ReactNode) {
+  return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
+}
 
 export const router = createBrowserRouter([
   {
@@ -19,7 +50,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "/login",
-        element: <LoginPage />,
+        element: withRouteFallback(<LoginPage />),
       },
     ],
   },
@@ -31,27 +62,27 @@ export const router = createBrowserRouter([
         children: [
           {
             path: "/",
-            element: <DashboardPage />,
+            element: withRouteFallback(<DashboardPage />),
           },
           {
             path: "/videos",
-            element: <VideosPage />,
+            element: withRouteFallback(<VideosPage />),
           },
           {
             path: "/videos/:videoId",
-            element: <VideoDetailPage />,
+            element: withRouteFallback(<VideoDetailPage />),
           },
           {
             path: "/websites",
-            element: <WebsitesPage />,
+            element: withRouteFallback(<WebsitesPage />),
           },
           {
             path: "/domains",
-            element: <DomainsPage />,
+            element: withRouteFallback(<DomainsPage />),
           },
           {
             path: "/settings",
-            element: <SettingsPage />,
+            element: withRouteFallback(<SettingsPage />),
           },
         ],
       },

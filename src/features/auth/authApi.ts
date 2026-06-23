@@ -3,7 +3,6 @@ import axios from "axios";
 import { axiosBaseClient, axiosClient } from "@/lib/api/axiosClient";
 import { getApiErrorMessage, normalizeApiError } from "@/lib/api/apiError";
 
-import { getAuthSessionSnapshot } from "./authSessionAccessor";
 import type {
   LoginAdminRequest,
   LoginAdminResponse,
@@ -84,17 +83,7 @@ export async function refreshAdminSession(
 }
 
 export async function getCurrentAdmin(): Promise<MeAdminResponse> {
-  const { accessToken } = getAuthSessionSnapshot();
-  const response = await axiosBaseClient.get<MeAdminResponse>(
-    "/admin/auth/me",
-    {
-      headers: accessToken
-        ? {
-            Authorization: `Bearer ${accessToken}`,
-          }
-        : undefined,
-    },
-  );
+  const response = await axiosClient.get<MeAdminResponse>("/admin/auth/me");
 
   return response.data;
 }

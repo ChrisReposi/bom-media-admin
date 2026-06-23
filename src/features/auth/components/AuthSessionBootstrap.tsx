@@ -21,6 +21,7 @@ type AuthSessionBootstrapProps = {
 const fallbackBootstrapError: NormalizedApiError = {
   status: null,
   message: "Khong the khoi phuc phien dang nhap. Vui long thu lai.",
+  isCanceled: false,
   isAuthError: false,
   isNetworkError: false,
   isRateLimitError: false,

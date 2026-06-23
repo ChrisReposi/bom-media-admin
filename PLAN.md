@@ -63,6 +63,7 @@ Completed or mostly completed:
 - auth persistence and refresh flow
 - typed API clients
 - loading/error/empty/toast states
+- route-level page splitting and on-demand video create/edit modal chunks
 
 Known Admin Web pending:
 
@@ -72,7 +73,7 @@ Known Admin Web pending:
 - browser-verify settings password-change flow against deployed/local backend
 - browser-verify LOCAL_FILE chunked upload, thumbnail replacement, preview and purge against deployed/local backend
 - advanced admin tables/forms
-- bundle splitting
+- further bundle analysis/tuning only if production measurements justify it
 - E2E tests against live API
 
 ### Public Websites
@@ -167,7 +168,7 @@ Target state:
 
 - [ ] Add cache for public watch response where safe.
 - [ ] Add CDN caching for static assets and thumbnails.
-- [ ] Add chunk splitting to reduce Vite warning.
+- [x] Add route-level chunk splitting and lazy heavy video modals.
 - [ ] Add OpenAPI-generated TypeScript client if backend contract stabilizes.
 - [ ] Add TanStack Query for server-state screens if desired.
 - [ ] Split videos, websites, share-links, access-logs into feature modules.

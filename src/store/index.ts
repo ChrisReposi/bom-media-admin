@@ -42,6 +42,7 @@ setAuthAccessToken(store.getState().auth.accessToken);
 
 configureAuthSessionHandlers({
   getSnapshot: () => ({
+    adminId: store.getState().auth.admin?.id ?? null,
     accessToken: store.getState().auth.accessToken,
     refreshToken: store.getState().auth.refreshToken,
   }),

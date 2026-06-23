@@ -2,6 +2,225 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-06-23 — Admin-wide route and bundle performance hardening
+
+### Audit
+
+- Preserved the completed Dashboard 24-item pagination, debounced search, response cache, and four-request local-thumbnail queue.
+- Preserved the completed parallel 401 refresh queue and cancellation handling.
+- Confirmed all major pages were still imported eagerly by the router.
+- Confirmed Create Video and Edit Video modal modules were bundled with their parent page before the modal was opened.
+- Confirmed Vite production minification was enabled by default and public source maps were disabled by default, but the policy was not explicit in config.
+- Confirmed normal thumbnail images already reserve `aspect-video` space and use `loading="lazy"` plus `decoding="async"`.
+- Confirmed the self-hosted Google Sans CSS already uses `font-display: swap`; no external font preconnect/preload is needed.
+- Found the main Videos list still fetched every mounted LOCAL_FILE thumbnail immediately even though Dashboard thumbnails were already visibility-gated.
+
+### Changed
+
+- Converted Login, Dashboard, Videos, Video Detail, Websites, Domains, and Settings pages to `React.lazy` route chunks without changing route URLs or auth guards.
+- Added a lightweight shared route loading skeleton within `Suspense`.
+- Lazy-loaded the existing Create Video and Edit Video modal modules only when opened, with a small modal loading fallback.
+- Reused the existing local-thumbnail object URL cache, failure TTL, request deduplication, and four-request queue in the main Videos list.
+- Added `IntersectionObserver` with a 250 px root margin to LOCAL_FILE video cards so list thumbnails fetch only near the viewport.
+- Made Vite production `minify: true` and `sourcemap: false` explicit.
+- Added Hostinger Apache cache headers:
+  - `index.html`: no-cache/no-store
+  - generated `/assets/*`: one-year immutable
+- Documented matching Cloudflare behavior and clarified that admin API/authenticated media responses must remain private/no-store.
+- Updated the production checklist, smoke test, and plan to reflect route splitting and cache verification.
+
+Files changed for this performance pass:
+
+```txt
+src/app/router.tsx
+src/components/common/RouteLoadingFallback.tsx
+src/components/common/LazyModalFallback.tsx
+src/pages/VideosPage.tsx
+src/pages/VideoDetailPage.tsx
+src/features/videos/components/VideoCard.tsx
+vite.config.ts
+public/.htaccess
+public/assets/.htaccess
+PLAN.md
+docs/05_DEPLOYMENT_HOSTINGER_CLOUDFLARE.md
+docs/07_PRODUCTION_CHECKLIST.md
+docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
+session-log.md
+```
+
+### Bundle result
+
+- The previous unsplit main JavaScript artifact was approximately 865 kB.
+- The new initial JavaScript artifact is approximately 366 kB (about 115 kB gzip).
+- Vite emitted separate chunks for all major pages.
+- Create Video and Edit Video are separate on-demand chunks.
+- The previous Vite `>500 kB` chunk warning no longer appears.
+
+### Intentionally not changed
+
+- Did not add a bundle-analyzer dependency because the production build output already proved the required boundaries.
+- Did not add `manualChunks`; route/modal splitting removed the warning without fragile vendor partitioning.
+- Did not add font preload/preconnect or replace the existing font package because fonts are self-hosted, unicode-ranged, and already use `font-display: swap`.
+- Did not change API contracts, routes, auth behavior, public URL normalization, or share-link payloads.
+- Did not rewrite Websites/Domains list UX; deeper pagination there should be driven by production volume measurements and a separate scoped change.
+
+### Verified
+
+- `yarn.cmd typecheck` passed.
+- `yarn.cmd lint` passed.
+- `yarn.cmd build` passed.
+- Build emitted separate page chunks plus `CreateVideoModal` and `EditVideoModal` chunks.
+- `dist/.htaccess` and `dist/assets/.htaccess` were copied into the production artifact.
+- Focused Prettier checks passed after formatting touched files.
+- `git diff --check` passed with Windows LF-to-CRLF notices only.
+- No `package-lock.json` or `pnpm-lock.yaml` files were created.
+- Repository-wide `yarn.cmd format:check` was run but remains failing on 14 pre-existing unrelated files; all files changed by this performance pass pass Prettier.
+
+### Pending
+
+- Run the production build locally and manually verify Login, Dashboard, Videos, Video Detail, Websites, Domains, Settings, create/upload modal, edit modal, share-link creation, and public URL normalization.
+- Verify Hostinger uploads hidden `.htaccess` files and returns the documented cache headers.
+- If Cloudflare overrides origin headers, add matching ordered cache rules in the Cloudflare dashboard.
+- Confirm Videos list LOCAL_FILE thumbnails load progressively and 429 failures remain placeholders.
+
+## 2026-06-23 — Parallel 401 refresh queue hardening
+
+### Root cause
+
+- The protected Axios client already shared an in-flight refresh promise, but a slower request could return 401 just after that promise completed and start a second refresh with the newly rotated refresh token.
+- Requests did not carry a non-secret auth-session version, so the interceptor could not distinguish a late 401 from a current-token 401.
+- Axios `CanceledError` responses were normalized as network failures, which could produce an incorrect error toast for an intentionally aborted upload.
+- Missing/failed refresh handling did not have an explicit single-shot session-clear guard.
+
+### Changed
+
+- Added a typed `_authSessionVersion` field alongside `_retry` on protected Axios request configs.
+- Every protected request now replaces any stale Authorization value with the current Redux session access token.
+- Kept one module-level `refreshPromise`; all parallel first-attempt 401 responses wait for that same refresh.
+- Added token-generation tracking so a late 401 from the previous access token retries once with the already-current token instead of starting another refresh.
+- Kept retries bounded to one attempt and excluded login, refresh, and logout endpoints from refresh interception.
+- Added a single-shot refresh-auth-failure latch so parallel 401/403 refresh failures clear the Redux session once and let the existing protected-route flow show the Vietnamese session-expired message on Login.
+- Preserved the existing session on canceled, network, 429, and 5xx refresh failures so temporary API trouble does not force logout.
+- Removed the interceptor hard reload; `ProtectedRoute` now performs the redirect after synchronous auth clearing.
+- Prevented an in-flight refresh response from restoring a session after logout or another session replacement.
+- Tagged protected requests with the safe admin ID and canceled stale responses if the active admin session changed before retry.
+- Routed `/admin/auth/me` through the protected Axios client so it uses the same current-token and retry behavior.
+- Added cancellation-aware API error normalization for Axios `CanceledError` and `AbortError`.
+- Suppressed the local-upload error toast when the upload was intentionally canceled.
+- Protected video/thumbnail Blob requests continue using `axiosClient`, so they participate in the same refresh queue and retain their existing placeholder/fallback handling.
+
+Files changed for this auth pass:
+
+```txt
+src/lib/api/axiosClient.ts
+src/lib/api/apiError.ts
+src/features/auth/authApi.ts
+src/features/auth/authSessionAccessor.ts
+src/features/auth/components/AuthSessionBootstrap.tsx
+src/features/videos/components/CreateVideoModal.tsx
+src/store/index.ts
+session-log.md
+```
+
+### Refresh queue design
+
+- The first eligible 401 marks its request `_retry`, then creates `refreshPromise`.
+- Concurrent 401 responses await the same promise; only one `/admin/auth/refresh` request is sent.
+- Refresh success updates Redux with the rotated access/refresh tokens before waiting requests retry.
+- Requests tagged with an older auth-session version reuse the already-current access token without refreshing again.
+- Requests from a different/cleared admin session are canceled instead of being replayed under the replacement session.
+- A retried request cannot enter the refresh flow again.
+- Refresh 401/403 clears auth once; all waiters receive the same refresh rejection.
+- Canceled, network, 429, and 5xx refresh failures reject consistently but preserve the current session for a later retry.
+- Canceled requests reject as cancellation and do not clear auth or display the upload error toast.
+
+### Verified
+
+- `yarn.cmd typecheck` passed.
+- `yarn.cmd lint` passed.
+- `yarn.cmd build` passed.
+- Build still reports the existing Vite large-chunk warning.
+- Changed-file Prettier check passed:
+  `yarn.cmd prettier --ignore-path ../../.prettierignore --check src/lib/api/axiosClient.ts src/lib/api/apiError.ts src/features/auth/authApi.ts src/features/auth/authSessionAccessor.ts src/features/auth/components/AuthSessionBootstrap.tsx src/features/videos/components/CreateVideoModal.tsx src/store/index.ts`
+- `git diff --check` passed; Git only reported Windows LF-to-CRLF working-copy notices.
+- No `package-lock.json` or `pnpm-lock.yaml` files were found.
+- Repository-wide `yarn.cmd format:check` was run but remains failing on 17 pre-existing unrelated files; all files changed by this auth pass Prettier-check successfully.
+
+### Manual test notes
+
+- A live expiry/refresh browser test was not run because this session did not have a controllable deployed/local backend session with forced access-token expiry.
+- Static verification confirms one shared refresh promise, one retry marker, stale-token generation detection, current-token replacement, single-shot session clearing, and cancellation bypass.
+- Source scan found no token, refresh token, Authorization header, password, or secret console logging.
+
+### Pending
+
+- Force an expired access token with valid refresh token and confirm Dashboard metadata plus thumbnail 401 responses produce exactly one refresh request and successful retries.
+- Revoke/expire the refresh token and confirm auth clears once, Login shows `Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.`, and no retry loop occurs.
+- Abort a LOCAL_FILE upload and confirm no error toast and no logout.
+- Inspect production console and Network tooling to confirm no application log exposes tokens or Authorization values.
+
+## 2026-06-23 — Dashboard video pagination and lazy thumbnail loading
+
+### Root cause
+
+- Dashboard requested up to 100 READY video records on every mount and remount.
+- Every mounted LOCAL_FILE card with a local thumbnail immediately fetched the protected `/admin/videos/:id/thumbnail` Blob in `useEffect`, so `loading="lazy"` on the later `<img>` did not prevent authenticated request bursts.
+- Navigating away and back recreated the dashboard requests because the screen had no short-lived server-response cache.
+
+### Changed
+
+- Added 24-item READY video pages with `createdAt desc` ordering, a Vietnamese “Tải thêm video” action, and append-without-clearing behavior.
+- Moved Dashboard video search to the server with a 300 ms debounce and page-1 reset while preserving selected video IDs across loaded pages and searches.
+- Added a per-admin, in-memory 60-second cache for active websites and READY video page responses keyed by search, page, limit, status, sort field, and sort order.
+- Manual Dashboard refresh bypasses both caches, keeps existing content visible, and shows a subtle refresh state.
+- Refactored Dashboard video cards into memoized cards and uses a memoized selected-ID `Set`.
+- LOCAL_FILE thumbnails now wait for an `IntersectionObserver` with a 250 px root margin before entering a four-request concurrency queue.
+- Added thumbnail request deduplication, a 150-entry object-URL cache, active-consumer leases to prevent revoking visible images, checksum/updated-at version keys, and a 60-second failure cache.
+- Kept non-LOCAL_FILE thumbnails on normal safe HTTP(S) `<img loading="lazy" decoding="async">` rendering.
+- Kept share-link payloads and creation behavior unchanged; Dashboard still fetches metadata and thumbnails only.
+
+Files changed:
+
+```txt
+src/pages/DashboardPage.tsx
+src/features/dashboard/components/ShareLinkComposer.tsx
+src/features/dashboard/components/ReadyVideoPicker.tsx
+src/features/dashboard/dashboardCache.ts
+src/features/dashboard/dashboardThumbnailCache.ts
+src/features/videos/videoApi.ts
+session-log.md
+```
+
+### Performance strategy
+
+- Bound initial video metadata work to 24 records instead of 100.
+- Fetch additional metadata only on explicit load-more actions.
+- Reuse fresh page and website responses for 60 seconds, including React Strict Mode in-flight request deduplication.
+- Start protected local-thumbnail requests only near the picker viewport and cap active requests at four.
+- Reuse successful object URLs for the admin session and suppress repeated failures for 60 seconds.
+
+### Verified
+
+- `yarn.cmd typecheck` passed.
+- `yarn.cmd lint` passed.
+- `yarn.cmd build` passed.
+- Build still reports the existing Vite large-chunk warning.
+- Changed-file Prettier check passed:
+  `yarn.cmd prettier --ignore-path ../../.prettierignore --check src/pages/DashboardPage.tsx src/features/dashboard/components/ShareLinkComposer.tsx src/features/dashboard/components/ReadyVideoPicker.tsx src/features/dashboard/dashboardCache.ts src/features/dashboard/dashboardThumbnailCache.ts src/features/videos/videoApi.ts`
+- `git diff --check` passed; Git only reported the existing Windows LF-to-CRLF working-copy notices.
+- No `package-lock.json` or `pnpm-lock.yaml` files were found.
+- Repository-wide `yarn.cmd format:check` was run but remains failing on 22 pre-existing unrelated files; all files changed by this task pass Prettier.
+
+### Manual test notes
+
+- A production-like browser test was not run because this session did not have a live authenticated backend/browser dataset with at least 40 READY videos.
+- Static verification confirms Dashboard requests use `limit: 24`, READY status, paged server search, cache bypass on manual refresh, Intersection Observer gating, and four-request thumbnail concurrency.
+
+### Pending
+
+- Run the requested 40+ READY video browser test against a live authenticated backend.
+- Confirm Network shows only page 1 initially, progressive `/admin/videos/:id/thumbnail` requests while scrolling, no 429 burst, successful cross-page selection/share-link creation, 60-second navigation cache reuse, and manual-refresh cache bypass.
+
 ## 2026-06-18 — Admin Web static-safe share URL normalization
 
 ### Summary

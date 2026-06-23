@@ -41,6 +41,10 @@ After `yarn build`:
 
 - [ ] `dist/` exists.
 - [ ] `dist/index.html` exists.
+- [ ] `dist/.htaccess` exists.
+- [ ] `dist/assets/.htaccess` exists.
+- [ ] Major pages are emitted as separate hashed chunks.
+- [ ] Create/edit video modals are emitted as on-demand chunks.
 - [ ] No source `.env` file is copied into `dist/`.
 - [ ] No obvious backend secret names or values appear in built assets.
 - [ ] No Cloudinary API secret appears in built assets.
@@ -61,6 +65,7 @@ Notes:
 - These grep checks are a coarse safety check, not a full secret scanner.
 - Operators must still ensure `.env.production` and real secret files are not committed.
 - Vite env values starting with `VITE_` are public client-side values after build.
+- Production source maps are intentionally disabled.
 
 ## 3. Production Env Checklist
 
@@ -90,6 +95,9 @@ Manual post-deploy checks:
 - [ ] Open the admin domain.
 - [ ] Cloudflare Access gate appears before the app if enabled.
 - [ ] Admin Web static assets load.
+- [ ] `index.html` response is not long-cached.
+- [ ] `/assets/*` responses use `public, max-age=31536000, immutable`.
+- [ ] Admin API and authenticated thumbnail/media responses are not publicly cached.
 - [ ] No console error appears on first load.
 - [ ] `/login` route loads.
 - [ ] Logged-out visit to `/` redirects to `/login`.
@@ -197,9 +205,12 @@ Do not require production data creation unless the release environment has appro
 
 - [ ] List loads.
 - [ ] Filters/search still work if implemented.
+- [ ] LOCAL_FILE list thumbnails start near the viewport, reuse the shared cache, and do not burst requests.
+- [ ] Thumbnail 429/fetch failures show placeholders without breaking the list.
 - [ ] Detail route loads.
 - [ ] Player preview does not expose unsafe data.
 - [ ] Create Video modal shows only Server, Manual URL, and Embed Code modes.
+- [ ] Opening Create Video loads its lazy chunk and shows a lightweight fallback if the network is slow.
 - [ ] Create Video modal does not show Cloudinary upload, Legacy DB upload, or database-disabled notes.
 - [ ] LOCAL_FILE server-storage upload shows progress and completes.
 - [ ] LOCAL_FILE upload cancel stops the browser request and calls cancel when an upload session exists.
@@ -215,6 +226,7 @@ Do not require production data creation unless the release environment has appro
 - [ ] Purge blocker errors for assigned/shared videos are shown safely.
 - [ ] Existing DB_BLOB admin preview still works for legacy records when the backend returns binary metadata.
 - [ ] Create/edit actions still validate forms.
+- [ ] Opening Edit Video loads its lazy chunk and preserves the existing form behavior.
 
 ### Websites / Domains
 

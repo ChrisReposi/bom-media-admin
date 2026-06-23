@@ -10,6 +10,8 @@ import {
   X,
 } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -21,8 +23,8 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { LazyModalFallback } from "@/components/common/LazyModalFallback";
 import { Input } from "@/components/ui/input";
-import { CreateVideoModal } from "@/features/videos/components/CreateVideoModal";
 import { VideoCard } from "@/features/videos/components/VideoCard";
 import { VideoCardSkeleton } from "@/features/videos/components/VideoCardSkeleton";
 import { VideosEmptyState } from "@/features/videos/components/VideosEmptyState";
@@ -40,6 +42,12 @@ import {
 } from "@/features/videos/videoTypes";
 
 const DEFAULT_VIDEO_STATUS_FILTER: VideoStatus = "READY";
+
+const LazyCreateVideoModal = lazy(() =>
+  import("@/features/videos/components/CreateVideoModal").then((module) => ({
+    default: module.CreateVideoModal,
+  })),
+);
 
 type StatusActionTarget = Extract<VideoStatus, "READY" | "DISABLED">;
 
@@ -532,11 +540,17 @@ export function VideosPage() {
         </div>
       ) : null}
 
-      <CreateVideoModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        onCreated={() => void fetchVideos({ silent: true })}
-      />
+      {modalOpen ? (
+        <Suspense
+          fallback={<LazyModalFallback label="Đang tải biểu mẫu video..." />}
+        >
+          <LazyCreateVideoModal
+            open
+            onOpenChange={setModalOpen}
+            onCreated={() => void fetchVideos({ silent: true })}
+          />
+        </Suspense>
+      ) : null}
     </section>
   );
 }

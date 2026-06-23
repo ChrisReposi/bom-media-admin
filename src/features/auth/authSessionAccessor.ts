@@ -5,6 +5,7 @@ import type {
 } from "./authTypes";
 
 type AuthSessionSnapshot = {
+  adminId: string | null;
   accessToken: string | null;
   refreshToken: string | null;
 };
@@ -19,7 +20,11 @@ type AuthSessionHandlers = {
 };
 
 let handlers: AuthSessionHandlers = {
-  getSnapshot: () => ({ accessToken: null, refreshToken: null }),
+  getSnapshot: () => ({
+    adminId: null,
+    accessToken: null,
+    refreshToken: null,
+  }),
   updateSession: () => undefined,
   clearSession: () => undefined,
 };

@@ -4,6 +4,7 @@ export type NormalizedApiError = {
   status: number | null;
   message: string;
   code?: string;
+  isCanceled: boolean;
   isAuthError: boolean;
   isNetworkError: boolean;
   isRateLimitError: boolean;
@@ -44,11 +45,45 @@ function readApiMessage(data: unknown): string | null {
   return null;
 }
 
+function isAbortDomException(error: unknown): boolean {
+  return (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  );
+}
+
 export function normalizeApiError(error: unknown): NormalizedApiError {
+  if (isAbortDomException(error)) {
+    return {
+      status: null,
+      message: "Yêu cầu đã được hủy.",
+      isCanceled: true,
+      isAuthError: false,
+      isNetworkError: false,
+      isRateLimitError: false,
+      isServerError: false,
+    };
+  }
+
   if (!axios.isAxiosError(error)) {
     return {
       status: null,
       message: "Có lỗi xảy ra. Vui lòng thử lại.",
+      isCanceled: false,
+      isAuthError: false,
+      isNetworkError: false,
+      isRateLimitError: false,
+      isServerError: false,
+    };
+  }
+
+  if (axios.isCancel(error)) {
+    return {
+      status: null,
+      message: "Yêu cầu đã được hủy.",
+      code: error.code,
+      isCanceled: true,
       isAuthError: false,
       isNetworkError: false,
       isRateLimitError: false,
@@ -61,6 +96,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       status: null,
       message: "Không thể kết nối tới API. Vui lòng kiểm tra server hoặc mạng.",
       code: error.code,
+      isCanceled: false,
       isAuthError: false,
       isNetworkError: true,
       isRateLimitError: false,
@@ -78,6 +114,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       status,
       message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
       code,
+      isCanceled: false,
       isAuthError: true,
       isNetworkError: false,
       isRateLimitError: false,
@@ -90,6 +127,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       status,
       message: "Bạn không có quyền thực hiện thao tác này.",
       code,
+      isCanceled: false,
       isAuthError: true,
       isNetworkError: false,
       isRateLimitError: false,
@@ -102,6 +140,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       status,
       message: "Có quá nhiều yêu cầu. Vui lòng chờ một lúc rồi thử lại.",
       code,
+      isCanceled: false,
       isAuthError: false,
       isNetworkError: false,
       isRateLimitError: true,
@@ -114,6 +153,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
       status,
       message: "Máy chủ đang gặp lỗi. Vui lòng thử lại sau.",
       code,
+      isCanceled: false,
       isAuthError: false,
       isNetworkError: false,
       isRateLimitError: false,
@@ -126,6 +166,7 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
     message:
       readApiMessage(error.response.data) ?? "Có lỗi xảy ra. Vui lòng thử lại.",
     code,
+    isCanceled: false,
     isAuthError: false,
     isNetworkError: false,
     isRateLimitError: false,
@@ -135,4 +176,8 @@ export function normalizeApiError(error: unknown): NormalizedApiError {
 
 export function getApiErrorMessage(error: unknown): string {
   return normalizeApiError(error).message;
+}
+
+export function isApiRequestCanceled(error: unknown): boolean {
+  return normalizeApiError(error).isCanceled;
 }
