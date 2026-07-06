@@ -8,7 +8,10 @@ import type {
   CreateShareLinkResponse,
   Website,
 } from "@/features/websites/websiteTypes";
-import type { ShareLinkComposerPayload } from "../dashboardTypes";
+import type {
+  DashboardVideoSearchStatus,
+  ShareLinkComposerPayload,
+} from "../dashboardTypes";
 import { ReadyVideoPicker } from "./ReadyVideoPicker";
 import { WebsiteQuickSelect } from "./WebsiteQuickSelect";
 import { CreatedShareLinkCard } from "./CreatedShareLinkCard";
@@ -24,9 +27,15 @@ type ShareLinkComposerProps = {
   isLoadingMoreVideos: boolean;
   hasMoreVideos: boolean;
   videoSearchQuery: string;
+  videoFilterKey: string;
+  videoSearchStatus?: DashboardVideoSearchStatus;
+  videoSearchError?: string | null;
+  videoSearchMinLength?: number;
   onWebsiteChange: (websiteId: string) => void;
   onVideoToggle: (videoId: string) => void;
   onVideoSearchChange: (query: string) => void;
+  onVideoFilterKeyChange: (value: string) => void;
+  onRetryVideoSearch?: () => void;
   onLoadMoreVideos: () => void;
   onSubmit: (payload: ShareLinkComposerPayload) => Promise<void>;
   createdShareLink: CreateShareLinkResponse | null;
@@ -62,9 +71,15 @@ export function ShareLinkComposer({
   isLoadingMoreVideos,
   hasMoreVideos,
   videoSearchQuery,
+  videoFilterKey,
+  videoSearchStatus,
+  videoSearchError,
+  videoSearchMinLength,
   onWebsiteChange,
   onVideoToggle,
   onVideoSearchChange,
+  onVideoFilterKeyChange,
+  onRetryVideoSearch,
   onLoadMoreVideos,
   onSubmit,
   createdShareLink,
@@ -89,6 +104,7 @@ export function ShareLinkComposer({
   const filteredWebsiteCount = filteredWebsites.length;
   const websiteSearchQuery = websiteSearch.trim();
   const trimmedVideoSearchQuery = videoSearchQuery.trim();
+  const trimmedVideoFilterKey = videoFilterKey.trim();
   const isSelectedWebsiteHidden =
     websiteSearchQuery.length > 0 &&
     Boolean(selectedWebsiteId) &&
@@ -130,7 +146,7 @@ export function ShareLinkComposer({
               </p>
             </div>
 
-            <div className="relative w-full max-w-[50%]">
+            <div className="relative w-full max-w-[50%] lg:max-w-[32%]">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--admin-text-muted)" />
               <Input
                 aria-label="Tìm website theo tên"
@@ -179,7 +195,7 @@ export function ShareLinkComposer({
               </p>
             </div>
 
-            <div className="relative w-full max-w-[50%]">
+            <div className="relative w-full max-w-[50%] lg:max-w-[32%]">
               {isVideoRefreshing ? (
                 <Loader2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-(--admin-text-muted)" />
               ) : (
@@ -204,16 +220,49 @@ export function ShareLinkComposer({
                 </button>
               ) : null}
             </div>
+
+            <div className="relative w-full max-w-[50%] lg:max-w-[32%]">
+              <Input
+                aria-label="Lọc video theo key"
+                className={[adminInputClass, "pr-9"].join(" ")}
+                placeholder="Lọc key..."
+                value={videoFilterKey}
+                onChange={(event) => onVideoFilterKeyChange(event.target.value)}
+                onKeyDown={preventSearchEnterSubmit}
+              />
+              {videoFilterKey ? (
+                <button
+                  aria-label="Xóa key lọc video"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-(--admin-text-muted) transition hover:bg-(--admin-surface-alt) hover:text-(--admin-text-strong)"
+                  type="button"
+                  onClick={() => onVideoFilterKeyChange("")}
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
+            </div>
           </div>
+
+          {trimmedVideoFilterKey ? (
+            <p className="mb-3 text-xs text-(--admin-text-muted)">
+              Key đang lọc: #{trimmedVideoFilterKey}. Video đã chọn vẫn được giữ
+              nếu bị ẩn bởi bộ lọc.
+            </p>
+          ) : null}
 
           <ReadyVideoPicker
             hasMore={hasMoreVideos}
             isLoadingMore={isLoadingMoreVideos}
+            filterKey={trimmedVideoFilterKey}
             searchQuery={trimmedVideoSearchQuery}
+            searchStatus={videoSearchStatus}
+            searchError={videoSearchError}
+            searchMinLength={videoSearchMinLength}
             selectedVideoIds={selectedVideoIds}
             totalVideos={totalVideos}
             videos={videos}
             onLoadMore={onLoadMoreVideos}
+            onRetrySearch={onRetryVideoSearch}
             onToggle={onVideoToggle}
           />
         </section>

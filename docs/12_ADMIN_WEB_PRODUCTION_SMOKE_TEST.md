@@ -43,6 +43,7 @@ After `yarn build`:
 - [ ] `dist/index.html` exists.
 - [ ] `dist/.htaccess` exists.
 - [ ] `dist/assets/.htaccess` exists.
+- [ ] `dist/.htaccess` contains the Hostinger SPA fallback rewrite to `index.html` for extensionless React Router routes.
 - [ ] Major pages are emitted as separate hashed chunks.
 - [ ] Create/edit video modals are emitted as on-demand chunks.
 - [ ] No source `.env` file is copied into `dist/`.
@@ -95,6 +96,8 @@ Manual post-deploy checks:
 - [ ] Open the admin domain.
 - [ ] Cloudflare Access gate appears before the app if enabled.
 - [ ] Admin Web static assets load.
+- [ ] Hidden `.htaccess` is present in the Hostinger document root, e.g. `public_html/.htaccess`.
+- [ ] Direct open/refresh of `/videos`, `/websites`, and `/videos/:videoId` does not show Hostinger 404.
 - [ ] `index.html` response is not long-cached.
 - [ ] `/assets/*` responses use `public, max-age=31536000, immutable`.
 - [ ] Admin API and authenticated thumbnail/media responses are not publicly cached.
@@ -105,6 +108,39 @@ Manual post-deploy checks:
 - [ ] Browser refresh preserves/restores session if refresh token is valid.
 
 Do not mark these complete until verified in the target environment.
+
+Hostinger SPA fallback checks:
+
+```bash
+curl -I https://bom-media-admin.site/
+curl -I https://bom-media-admin.site/videos
+curl -I https://bom-media-admin.site/websites
+curl -I https://bom-media-admin.site/videos/fdd79f89-e372-456d-a30e-c907b0d0d75e
+```
+
+Expected:
+
+```txt
+200 OK for extensionless Admin Web routes
+React Router renders the matching protected page after JavaScript loads
+logged-out users are redirected by the app to /login
+```
+
+Also verify one real hashed asset from the latest build:
+
+```bash
+curl -I https://bom-media-admin.site/assets/<real-built-js-file>.js
+```
+
+Expected:
+
+```txt
+200 OK
+JavaScript Content-Type
+public, max-age=31536000, immutable, unless Cloudflare intentionally overrides it
+```
+
+Missing static files with extensions should not return `index.html`.
 
 ## 5. Auth Smoke Tests
 
@@ -194,6 +230,7 @@ Do not require production data creation unless the release environment has appro
 
 - [ ] Loads active websites.
 - [ ] Loads READY shareable videos.
+- [ ] Dashboard video picker filters by `filterKey` and preserves selected videos when the key changes.
 - [ ] Handles empty state.
 - [ ] Handles API error safely.
 - [ ] Creates share link only with explicit selected `videoIds`.
@@ -205,6 +242,7 @@ Do not require production data creation unless the release environment has appro
 
 - [ ] List loads.
 - [ ] Filters/search still work if implemented.
+- [ ] Video `filterKey` list filter works for keys such as `sml` and `msa`; clearing the key returns all matching videos.
 - [ ] LOCAL_FILE list thumbnails start near the viewport, reuse the shared cache, and do not burst requests.
 - [ ] Thumbnail 429/fetch failures show placeholders without breaking the list.
 - [ ] Detail route loads.
@@ -213,6 +251,7 @@ Do not require production data creation unless the release environment has appro
 - [ ] Opening Create Video loads its lazy chunk and shows a lightweight fallback if the network is slow.
 - [ ] Create Video modal does not show Cloudinary upload, Legacy DB upload, or database-disabled notes.
 - [ ] LOCAL_FILE server-storage upload shows progress and completes.
+- [ ] Manual, Embed, and LOCAL_FILE create flows can save optional `filterKey`; invalid keys and reserved `all` are rejected in the form.
 - [ ] LOCAL_FILE upload cancel stops the browser request and calls cancel when an upload session exists.
 - [ ] LOCAL_FILE thumbnail upload stores thumbnail through the backend local-thumbnail route.
 - [ ] LOCAL_FILE preview works from video detail without exposing storage keys or absolute paths.
@@ -226,6 +265,7 @@ Do not require production data creation unless the release environment has appro
 - [ ] Purge blocker errors for assigned/shared videos are shown safely.
 - [ ] Existing DB_BLOB admin preview still works for legacy records when the backend returns binary metadata.
 - [ ] Create/edit actions still validate forms.
+- [ ] Edit Video can set and clear `filterKey`; VideoCard and detail metadata display the key safely.
 - [ ] Opening Edit Video loads its lazy chunk and preserves the existing form behavior.
 
 ### Websites / Domains

@@ -61,3 +61,10 @@ export function getProviderLabel(provider: string): string {
 
   return labels[provider] ?? provider;
 }
+
+export function formatVideoFilterKey(
+  value: string | null | undefined,
+): string | null {
+  const trimmedValue = value?.trim();
+  return trimmedValue ? trimmedValue : null;
+}

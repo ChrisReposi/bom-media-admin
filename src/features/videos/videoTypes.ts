@@ -39,6 +39,7 @@ export type VideoAsset = {
   providerAssetId: string | null;
   playbackId: string | null;
   playbackUrl: string | null;
+  filterKey?: string | null;
   embedProvider?: EmbedProvider | null;
   embedUrl: string | null;
   embedCloudName?: string | null;
@@ -105,6 +106,7 @@ export type CreateVideoManualPayload = {
   title: string;
   description?: string;
   playbackUrl: string;
+  filterKey?: string;
   thumbnailUrl?: string;
   thumbnailFile?: File;
   durationSeconds?: number;
@@ -117,6 +119,7 @@ export type CreateVideoEmbedPayload = {
   title: string;
   description?: string;
   embedCodeOrUrl: string;
+  filterKey?: string;
   thumbnailUrl?: string;
   thumbnailFile?: File;
   durationSeconds?: number;
@@ -129,6 +132,7 @@ export type UploadLocalVideoPayload = {
   title: string;
   description?: string;
   file: File;
+  filterKey?: string;
   thumbnailUrl?: string;
   thumbnailFile?: File;
   durationSeconds?: number;
@@ -161,6 +165,7 @@ export type UpdateVideoPayload = {
   title?: string;
   description?: string | null;
   playbackUrl?: string;
+  filterKey?: string | null;
   thumbnailUrl?: string | null;
   durationSeconds?: number | null;
   viewCount?: number;
@@ -181,6 +186,9 @@ export type PurgeVideoResponse = {
   safety?: {
     hadWebsiteAssignments?: boolean;
     hadShareLinks?: boolean;
+    activeWebsiteAssignmentCount?: number;
+    disabledShareLinkCount?: number;
+    detachedShareLinkVideoCount?: number;
   };
   storage?: {
     localVideoDeleteAttempted?: boolean;

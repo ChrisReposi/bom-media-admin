@@ -12,6 +12,7 @@ export type DashboardVideoCacheParams = {
   page: number;
   limit: number;
   search?: string;
+  filterKey?: string;
   status: VideoStatus;
   sortBy: "createdAt" | "updatedAt" | "publishedAt" | "title";
   sortOrder: "asc" | "desc";
@@ -39,11 +40,16 @@ function getVideoPageCacheKey(
     scope,
     page: params.page,
     limit: params.limit,
-    search: params.search?.trim() ?? "",
+    search: normalizeVideoCacheSearch(params.search),
+    filterKey: normalizeVideoCacheSearch(params.filterKey),
     status: params.status,
     sortBy: params.sortBy,
     sortOrder: params.sortOrder,
   });
+}
+
+function normalizeVideoCacheSearch(value: string | undefined): string {
+  return value?.trim().replace(/\s+/g, " ") ?? "";
 }
 
 function pruneVideoPageCache(): void {
@@ -111,16 +117,18 @@ export async function loadDashboardVideoPage(options: {
   scope: string;
   params: DashboardVideoCacheParams;
   bypassCache?: boolean;
+  dedupeRequests?: boolean;
   fetcher: () => Promise<VideosListResponse>;
 }): Promise<VideosListResponse> {
   const cacheKey = getVideoPageCacheKey(options.scope, options.params);
   const cachedEntry = videoPageCache.get(cacheKey);
+  const shouldDedupeRequests = options.dedupeRequests ?? true;
 
   if (!options.bypassCache && cachedEntry && isFresh(cachedEntry.cachedAt)) {
     return cachedEntry.data;
   }
 
-  if (!options.bypassCache) {
+  if (!options.bypassCache && shouldDedupeRequests) {
     const existingRequest = videoPageRequests.get(cacheKey);
 
     if (existingRequest) {
@@ -129,7 +137,7 @@ export async function loadDashboardVideoPage(options: {
   }
 
   const request = options.fetcher().then((response) => {
-    if (videoPageRequests.get(cacheKey) === request) {
+    if (!shouldDedupeRequests || videoPageRequests.get(cacheKey) === request) {
       videoPageCache.set(cacheKey, {
         data: response,
         cachedAt: Date.now(),
@@ -140,12 +148,14 @@ export async function loadDashboardVideoPage(options: {
     return response;
   });
 
-  videoPageRequests.set(cacheKey, request);
+  if (shouldDedupeRequests) {
+    videoPageRequests.set(cacheKey, request);
+  }
 
   try {
     return await request;
   } finally {
-    if (videoPageRequests.get(cacheKey) === request) {
+    if (shouldDedupeRequests && videoPageRequests.get(cacheKey) === request) {
       videoPageRequests.delete(cacheKey);
     }
   }

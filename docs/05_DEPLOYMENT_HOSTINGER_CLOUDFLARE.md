@@ -156,6 +156,32 @@ yarn build
 The production build keeps source maps disabled and emits hashed route/page
 chunks. Confirm that the Hostinger uploader includes both `.htaccess` files.
 
+Hostinger must serve the Admin Web as a history-mode SPA. The generated
+`dist/.htaccess` contains the Apache/LiteSpeed fallback that serves
+`index.html` for extensionless React Router routes such as `/videos`,
+`/websites`, and `/videos/:videoId`. Without this file, direct opens or browser
+refreshes on deep routes will show Hostinger's 404 page before React can load.
+
+When uploading Admin Web to Hostinger, upload the entire `dist` contents to the
+domain document root, including hidden files:
+
+```txt
+dist/index.html
+dist/assets/
+dist/.htaccess
+```
+
+For `bom-media-admin.site`, `.htaccess` must end up in the active document root,
+usually:
+
+```txt
+public_html/.htaccess
+```
+
+or the actual document root configured for that domain. FTP clients and
+Hostinger File Manager views may hide dotfiles, so explicitly verify the file is
+present after upload.
+
 Public sites:
 
 ```bash
@@ -178,6 +204,8 @@ Backend:
 - [ ] Build Admin Web.
 - [ ] Upload static assets.
 - [ ] Upload `dist/.htaccess` and `dist/assets/.htaccess`.
+- [ ] Verify `.htaccess` exists in the domain document root, e.g. `public_html/.htaccess`.
+- [ ] Verify direct refresh/open for `/videos`, `/websites`, and `/videos/:videoId` returns the Admin Web HTML instead of Hostinger 404.
 - [ ] Verify `index.html` is not long-cached.
 - [ ] Verify `/assets/*` uses one-year immutable browser caching.
 - [ ] Verify admin API and authenticated media responses are not publicly cached.

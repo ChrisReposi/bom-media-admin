@@ -14,6 +14,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -40,8 +41,17 @@ import {
   type VideoStatus,
   type VideosListResponse,
 } from "@/features/videos/videoTypes";
+import {
+  isValidVideoFilterKey,
+  normalizeVideoFilterKeyInput,
+  VIDEO_FILTER_KEY_EXAMPLES,
+  VIDEO_FILTER_KEY_MAX_LENGTH,
+} from "@/features/videos/videoFilterKeyUtils";
+import { isApiRequestCanceled } from "@/lib/api/apiError";
 
 const DEFAULT_VIDEO_STATUS_FILTER: VideoStatus = "READY";
+const VIDEOS_SEARCH_MIN_LENGTH = 2;
+const VIDEOS_SEARCH_MAX_LENGTH = 80;
 
 const LazyCreateVideoModal = lazy(() =>
   import("@/features/videos/components/CreateVideoModal").then((module) => ({
@@ -50,6 +60,10 @@ const LazyCreateVideoModal = lazy(() =>
 );
 
 type StatusActionTarget = Extract<VideoStatus, "READY" | "DISABLED">;
+
+function normalizeVideoSearchInput(value: string): string {
+  return value.trim().replace(/\s+/g, " ").slice(0, VIDEOS_SEARCH_MAX_LENGTH);
+}
 
 const videoStatusLabels: Record<VideoStatus, string> = {
   DISABLED: "Đã tắt",
@@ -91,12 +105,28 @@ export function VideosPage() {
   const [limit] = useState(20);
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [filterKeyInput, setFilterKeyInput] = useState("");
+  const [appliedFilterKey, setAppliedFilterKey] = useState("");
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [filterKeyError, setFilterKeyError] = useState<string | null>(null);
+  const videoListAbortRef = useRef<AbortController | null>(null);
+  const videoListRequestVersionRef = useRef(0);
+  const hasLoadedVideoListRef = useRef(false);
   const statusModalRef = useRef<HTMLDivElement | null>(null);
   const statusCancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const fetchVideos = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (options?.silent) {
+      const requestVersion = videoListRequestVersionRef.current + 1;
+      videoListRequestVersionRef.current = requestVersion;
+      videoListAbortRef.current?.abort();
+
+      const abortController = new AbortController();
+      videoListAbortRef.current = abortController;
+      const shouldKeepCurrentContent =
+        options?.silent === true || hasLoadedVideoListRef.current;
+
+      if (shouldKeepCurrentContent) {
         setIsRefetching(true);
       } else {
         setIsLoading(true);
@@ -104,14 +134,25 @@ export function VideosPage() {
 
       try {
         setError(null);
+        setSearchError(null);
 
-        const response = await getVideos({
-          page,
-          limit,
-          status: statusFilter,
-          search: appliedSearch || undefined,
-          sortOrder: "desc",
-        });
+        const response = await getVideos(
+          {
+            page,
+            limit,
+            status: statusFilter,
+            search: appliedSearch || undefined,
+            filterKey: appliedFilterKey || undefined,
+            sortOrder: "desc",
+          },
+          {
+            signal: abortController.signal,
+          },
+        );
+
+        if (videoListRequestVersionRef.current !== requestVersion) {
+          return;
+        }
 
         if (
           response.meta.totalPages > 0 &&
@@ -123,19 +164,49 @@ export function VideosPage() {
 
         setVideos(response.items);
         setMeta(response.meta);
+        hasLoadedVideoListRef.current = true;
       } catch (fetchError) {
+        if (
+          videoListRequestVersionRef.current !== requestVersion ||
+          isApiRequestCanceled(fetchError)
+        ) {
+          return;
+        }
+
+        if (appliedSearch || appliedFilterKey) {
+          if (appliedFilterKey) {
+            setSearchError("Không thể lọc video. Vui lòng thử lại.");
+            return;
+          }
+          setSearchError("Không thể tìm video. Vui lòng thử lại.");
+          return;
+        }
+
         setError(getApiErrorMessage(fetchError));
       } finally {
-        setIsLoading(false);
-        setIsRefetching(false);
+        if (videoListRequestVersionRef.current === requestVersion) {
+          setIsLoading(false);
+          setIsRefetching(false);
+
+          if (videoListAbortRef.current === abortController) {
+            videoListAbortRef.current = null;
+          }
+        }
       }
     },
-    [appliedSearch, limit, page, statusFilter],
+    [appliedFilterKey, appliedSearch, limit, page, statusFilter],
   );
 
   useEffect(() => {
     void fetchVideos();
   }, [fetchVideos]);
+
+  useEffect(() => {
+    return () => {
+      videoListRequestVersionRef.current += 1;
+      videoListAbortRef.current?.abort();
+    };
+  }, []);
 
   const closeStatusActionModal = useCallback(() => {
     if (statusUpdatingVideoId !== null) {
@@ -170,14 +241,24 @@ export function VideosPage() {
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
-    const trimmedSearch = searchInput.trim();
+    const normalizedSearch = normalizeVideoSearchInput(searchInput);
 
-    if (trimmedSearch === appliedSearch && page === 1) {
+    if (
+      normalizedSearch.length > 0 &&
+      normalizedSearch.length < VIDEOS_SEARCH_MIN_LENGTH
+    ) {
+      setSearchInput(normalizedSearch);
+      setSearchError(null);
       return;
     }
 
-    setAppliedSearch(trimmedSearch);
-    setSearchInput(trimmedSearch);
+    if (normalizedSearch === appliedSearch && page === 1) {
+      return;
+    }
+
+    setAppliedSearch(normalizedSearch);
+    setSearchInput(normalizedSearch);
+    setSearchError(null);
     setPage(1);
   }
 
@@ -188,6 +269,45 @@ export function VideosPage() {
 
     setSearchInput("");
     setAppliedSearch("");
+    setSearchError(null);
+    setPage(1);
+  }
+
+  function handleFilterKeySubmit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+
+    const normalizedFilterKey = normalizeVideoFilterKeyInput(filterKeyInput);
+
+    if (!isValidVideoFilterKey(normalizedFilterKey)) {
+      setFilterKeyInput(normalizedFilterKey);
+      setFilterKeyError(
+        normalizedFilterKey === "all"
+          ? "Không sử dụng all làm key lọc."
+          : "Key lọc chỉ được gồm chữ thường, số và dấu gạch dưới.",
+      );
+      return;
+    }
+
+    if (normalizedFilterKey === appliedFilterKey && page === 1) {
+      return;
+    }
+
+    setAppliedFilterKey(normalizedFilterKey);
+    setFilterKeyInput(normalizedFilterKey);
+    setFilterKeyError(null);
+    setSearchError(null);
+    setPage(1);
+  }
+
+  function handleClearFilterKey(): void {
+    if (!filterKeyInput && !appliedFilterKey) {
+      return;
+    }
+
+    setFilterKeyInput("");
+    setAppliedFilterKey("");
+    setFilterKeyError(null);
+    setSearchError(null);
     setPage(1);
   }
 
@@ -275,13 +395,36 @@ export function VideosPage() {
   const canGoPrevious = currentPage > 1 && !isLoading && !isRefetching;
   const canGoNext =
     totalPages > 0 && currentPage < totalPages && !isLoading && !isRefetching;
-  const trimmedSearchInput = searchInput.trim();
-  const hasSearchInput = searchInput.length > 0;
+  const normalizedSearchInput = normalizeVideoSearchInput(searchInput);
+  const normalizedFilterKeyInput = normalizeVideoFilterKeyInput(filterKeyInput);
+  const isSearchInputTooShort =
+    normalizedSearchInput.length > 0 &&
+    normalizedSearchInput.length < VIDEOS_SEARCH_MIN_LENGTH;
+  const isFilterKeyInputInvalid = !isValidVideoFilterKey(
+    normalizedFilterKeyInput,
+  );
   const hasAppliedSearch = appliedSearch.length > 0;
+  const hasAppliedFilterKey = appliedFilterKey.length > 0;
   const isSearchButtonDisabled =
     isLoading ||
     isRefetching ||
-    (trimmedSearchInput === appliedSearch && page === 1);
+    isSearchInputTooShort ||
+    (normalizedSearchInput === appliedSearch && page === 1);
+  const isFilterKeyButtonDisabled =
+    isLoading ||
+    isRefetching ||
+    isFilterKeyInputInvalid ||
+    (normalizedFilterKeyInput === appliedFilterKey && page === 1);
+  const filterKeySuggestions = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...VIDEO_FILTER_KEY_EXAMPLES,
+        ...videos
+          .map((video) => video.filterKey)
+          .filter((value): value is string => Boolean(value?.trim())),
+      ]),
+    );
+  }, [videos]);
   const isStatusActionDisable = statusActionTarget === "DISABLED";
   const isStatusActionSubmitting =
     statusActionVideo !== null &&
@@ -349,37 +492,111 @@ export function VideosPage() {
           })}
         </div>
 
-        <form
-          className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-md"
-          onSubmit={handleSearchSubmit}
-        >
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--admin-text-muted)" />
-            <Input
-              aria-label="Tìm video theo tiêu đề"
-              className="h-10 bg-(--admin-surface) pl-9 pr-5 text-(--admin-text-strong)"
-              placeholder="Tìm theo tiêu đề video"
-              type="search"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
-          </div>
-
-          <Button
-            disabled={isSearchButtonDisabled}
-            type="submit"
-            variant="outline"
+        <div className="w-full lg:max-w-md">
+          <form
+            className="flex w-full flex-col gap-2 sm:flex-row"
+            onSubmit={handleSearchSubmit}
           >
-            <Search className="size-4" />
-            Tìm kiếm
-          </Button>
-        </form>
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--admin-text-muted)" />
+              <Input
+                aria-label="Tìm video theo tiêu đề"
+                className="h-10 bg-(--admin-surface) pl-9 pr-5 text-(--admin-text-strong)"
+                placeholder="Tìm theo tiêu đề video"
+                type="search"
+                value={searchInput}
+                onChange={(event) =>
+                  setSearchInput(
+                    event.target.value.slice(0, VIDEOS_SEARCH_MAX_LENGTH),
+                  )
+                }
+              />
+            </div>
+
+            <Button
+              disabled={isSearchButtonDisabled}
+              type="submit"
+              variant="outline"
+            >
+              <Search className="size-4" />
+              Tìm kiếm
+            </Button>
+          </form>
+          {isSearchInputTooShort ? (
+            <p className="mt-2 text-xs text-(--admin-text-muted)">
+              Nhập ít nhất {VIDEOS_SEARCH_MIN_LENGTH} ký tự để tìm video.
+            </p>
+          ) : searchError ? (
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+              <span>{searchError}</span>
+              <button
+                className="font-medium underline-offset-2 hover:underline"
+                type="button"
+                onClick={() => void fetchVideos({ silent: true })}
+              >
+                Thử lại
+              </button>
+            </div>
+          ) : null}
+          <form
+            className="mt-3 flex w-full flex-col gap-2 sm:flex-row"
+            onSubmit={handleFilterKeySubmit}
+          >
+            <div className="relative flex-1">
+              <Input
+                aria-label="Lọc video theo key"
+                className="h-10 bg-(--admin-surface) pr-9 text-(--admin-text-strong)"
+                list="video-filter-key-suggestions"
+                placeholder="Lọc theo key: sml, msa..."
+                value={filterKeyInput}
+                onChange={(event) => {
+                  setFilterKeyInput(
+                    event.target.value.slice(0, VIDEO_FILTER_KEY_MAX_LENGTH),
+                  );
+                  setFilterKeyError(null);
+                }}
+              />
+              {filterKeyInput ? (
+                <button
+                  aria-label="Xóa key lọc"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-(--admin-text-muted) transition hover:bg-(--admin-surface-alt) hover:text-(--admin-text-strong)"
+                  type="button"
+                  onClick={handleClearFilterKey}
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
+              <datalist id="video-filter-key-suggestions">
+                {filterKeySuggestions.map((filterKey) => (
+                  <option key={filterKey} value={filterKey} />
+                ))}
+              </datalist>
+            </div>
+
+            <Button
+              disabled={isFilterKeyButtonDisabled}
+              type="submit"
+              variant="outline"
+            >
+              Lọc key
+            </Button>
+          </form>
+          {filterKeyError || isFilterKeyInputInvalid ? (
+            <p className="mt-2 text-xs text-[var(--admin-danger)]">
+              {filterKeyError ??
+                (normalizedFilterKeyInput === "all"
+                  ? "Không sử dụng all làm key lọc."
+                  : "Key lọc chỉ được gồm chữ thường, số và dấu gạch dưới.")}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 text-sm text-(--admin-text) md:flex-row md:items-center md:justify-between">
         <span>
           Tổng cộng: {meta?.total ?? videos.length} videos
           {hasAppliedSearch ? ` · Tìm kiếm: "${appliedSearch}"` : ""}
+          {hasAppliedFilterKey ? ` · Key: ${appliedFilterKey}` : ""}
         </span>
 
         <div className="flex items-center gap-2">
@@ -419,6 +636,25 @@ export function VideosPage() {
         </div>
       ) : error ? (
         <VideosErrorState message={error} onRetry={() => void fetchVideos()} />
+      ) : !hasVideos && (hasAppliedSearch || hasAppliedFilterKey) ? (
+        <section className="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-(--admin-border-strong) bg-(--admin-surface) px-6 py-10 text-center">
+          <h2 className="text-lg font-semibold text-(--admin-text-strong)">
+            Không có video phù hợp
+          </h2>
+          <p className="mt-2 max-w-md text-sm text-(--admin-text)">
+            Không có video nào khớp với tìm kiếm hoặc key đang lọc.
+          </p>
+          {hasAppliedFilterKey ? (
+            <Button
+              className="mt-4"
+              type="button"
+              variant="outline"
+              onClick={handleClearFilterKey}
+            >
+              Xóa key lọc
+            </Button>
+          ) : null}
+        </section>
       ) : !hasVideos ? (
         <VideosEmptyState onCreate={() => setModalOpen(true)} />
       ) : (

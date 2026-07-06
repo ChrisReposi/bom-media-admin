@@ -3,3 +3,9 @@ export type ShareLinkComposerPayload = {
   maxViews?: number;
   expiresAt?: string;
 };
+
+export type DashboardVideoSearchStatus =
+  | "idle"
+  | "too-short"
+  | "loading"
+  | "error";

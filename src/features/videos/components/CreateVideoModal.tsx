@@ -20,6 +20,7 @@ import {
   useState,
   type CSSProperties,
   type ChangeEvent,
+  type FocusEvent,
 } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { toast } from "sonner";
@@ -44,9 +45,12 @@ import {
 } from "../cloudinaryVideoUtils";
 import {
   formatAdminPublishedAtInput,
+  formatAdminPublishedAtTypingValue,
+  normalizeAdminPublishedAtInput,
   parseAdminPublishedAtInput,
 } from "../videoDateUtils";
 import { extractIframeSrc, isSafePreviewEmbedUrl } from "../videoEmbedUtils";
+import { normalizeVideoFilterKeyInput } from "../videoFilterKeyUtils";
 import { createVideoSchema, type CreateVideoFormValues } from "../videoSchemas";
 import {
   VIDEO_STATUS_OPTIONS,
@@ -97,6 +101,7 @@ const defaultValues: CreateVideoFormValues = {
   mode: "local-upload",
   title: "",
   description: "",
+  filterKey: "",
   playbackUrl: "",
   embedCodeOrUrl: "",
   thumbnailUrl: "",
@@ -555,6 +560,38 @@ export function CreateVideoModal({
       localUploadProgress.phase === "canceling");
   const isBusy = isSubmitting || isLocalUploadSubmitting;
 
+  function handlePublishedAtBlur(event: FocusEvent<HTMLInputElement>): void {
+    const formattedValue = formatAdminPublishedAtTypingValue(
+      event.target.value,
+    );
+
+    if (formattedValue !== event.target.value) {
+      setValue("publishedAt", formattedValue, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }
+
+  const publishedAtField = register("publishedAt", {
+    onBlur: handlePublishedAtBlur,
+  });
+
+  function handleFilterKeyBlur(event: FocusEvent<HTMLInputElement>): void {
+    const normalizedValue = normalizeVideoFilterKeyInput(event.target.value);
+
+    if (normalizedValue !== event.target.value) {
+      setValue("filterKey", normalizedValue, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }
+
+  const filterKeyField = register("filterKey", {
+    onBlur: handleFilterKeyBlur,
+  });
+
   function createPreviewObjectUrl(blob: Blob): string {
     const objectUrl = URL.createObjectURL(blob);
     objectUrlsRef.current.add(objectUrl);
@@ -903,16 +940,27 @@ export function CreateVideoModal({
         return;
       }
 
-      const publishedAt = parseAdminPublishedAtInput(values.publishedAt ?? "");
+      const normalizedPublishedAt = normalizeAdminPublishedAtInput(
+        values.publishedAt ?? "",
+      );
+      const publishedAt = parseAdminPublishedAtInput(normalizedPublishedAt);
 
       if (values.publishedAt?.trim() && !publishedAt) {
         toast.error(
-          "Thời gian xuất bản phải có dạng 03/06/2026 hoặc 03/06/2026, 10:41.",
+          "Thời gian xuất bản phải có dạng 17/03/1999 hoặc 17/03/1999, 10:41. Có thể nhập nhanh 17031999, 1041.",
         );
         return;
       }
 
+      if (normalizedPublishedAt !== (values.publishedAt ?? "")) {
+        setValue("publishedAt", normalizedPublishedAt, {
+          shouldDirty: true,
+          shouldValidate: false,
+        });
+      }
+
       const description = values.description?.trim() || undefined;
+      const filterKey = normalizeVideoFilterKeyInput(values.filterKey ?? "");
       const viewCount =
         typeof values.viewCount === "number" ? values.viewCount : undefined;
       const durationSeconds = getNumericValue(values.durationSeconds);
@@ -928,6 +976,7 @@ export function CreateVideoModal({
           playbackUrl: values.playbackUrl?.trim() ?? "",
           status,
           ...(description ? { description } : {}),
+          ...(filterKey ? { filterKey } : {}),
           ...(thumbnailUrlValue ? { thumbnailUrl: thumbnailUrlValue } : {}),
           ...(thumbnailFileValue ? { thumbnailFile: thumbnailFileValue } : {}),
           ...(durationSeconds !== undefined ? { durationSeconds } : {}),
@@ -948,6 +997,7 @@ export function CreateVideoModal({
           embedCodeOrUrl: values.embedCodeOrUrl?.trim() ?? "",
           status,
           ...(description ? { description } : {}),
+          ...(filterKey ? { filterKey } : {}),
           ...(thumbnailUrlValue ? { thumbnailUrl: thumbnailUrlValue } : {}),
           ...(thumbnailFileValue ? { thumbnailFile: thumbnailFileValue } : {}),
           ...(durationSeconds !== undefined ? { durationSeconds } : {}),
@@ -978,6 +1028,7 @@ export function CreateVideoModal({
             file,
             status,
             ...(description ? { description } : {}),
+            ...(filterKey ? { filterKey } : {}),
             ...(thumbnailUrlValue ? { thumbnailUrl: thumbnailUrlValue } : {}),
             ...(thumbnailFileValue
               ? { thumbnailFile: thumbnailFileValue }
@@ -1184,6 +1235,26 @@ export function CreateVideoModal({
                 {...register("description")}
               />
               <FieldError message={errors.description?.message} />
+            </div>
+
+            <div>
+              <label
+                className="mb-2 block text-sm font-medium text-(--admin-text-strong)"
+                htmlFor="video-filter-key"
+              >
+                Key lọc video
+              </label>
+              <Input
+                id="video-filter-key"
+                className={fieldClass(!!errors.filterKey)}
+                placeholder="sml, msa, judge_judy, coryxkenshin"
+                aria-invalid={!!errors.filterKey}
+                {...filterKeyField}
+              />
+              <p className="mt-2 text-xs text-(--admin-text-muted)">
+                Dùng để lọc nhanh video theo chủ đề/kênh. Có thể bỏ trống.
+              </p>
+              <FieldError message={errors.filterKey?.message} />
             </div>
 
             <div className="md:col-span-2">
@@ -1589,11 +1660,12 @@ export function CreateVideoModal({
               <div className="flex gap-2">
                 <Input
                   id="published-at"
+                  inputMode="numeric"
                   type="text"
-                  placeholder="03/06/2026, 10:41"
+                  placeholder="17/03/1999, 10:41"
                   className={fieldClass(!!errors.publishedAt)}
                   aria-invalid={!!errors.publishedAt}
-                  {...register("publishedAt")}
+                  {...publishedAtField}
                 />
                 <Button
                   aria-label="Chọn thời gian hiện tại"
@@ -1664,6 +1736,10 @@ export function CreateVideoModal({
                   Xóa
                 </Button>
               </div>
+              <p className="mt-2 text-xs text-(--admin-text-muted)">
+                Có thể nhập 17031999, 1041 để tự định dạng thành 17/03/1999,
+                10:41.
+              </p>
               <FieldError message={errors.publishedAt?.message} />
             </div>
           </div>

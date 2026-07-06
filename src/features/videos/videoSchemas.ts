@@ -1,6 +1,11 @@
 import { z } from "zod/v4";
 
 import { parseAdminPublishedAtInput } from "./videoDateUtils";
+import {
+  isValidVideoFilterKey,
+  normalizeVideoFilterKeyInput,
+  VIDEO_FILTER_KEY_MAX_LENGTH,
+} from "./videoFilterKeyUtils";
 import { VIDEO_STATUS_OPTIONS } from "./videoTypes";
 
 const optionalNonNegativeInteger = (label: string) =>
@@ -28,6 +33,20 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
+const optionalVideoFilterKey = z
+  .string()
+  .max(VIDEO_FILTER_KEY_MAX_LENGTH, "Key lọc tối đa 64 ký tự")
+  .refine(
+    (value) => normalizeVideoFilterKeyInput(value) !== "all",
+    "Không sử dụng all làm key lọc",
+  )
+  .refine(
+    (value) => isValidVideoFilterKey(value),
+    "Key lọc chỉ được gồm chữ thường, số và dấu gạch dưới",
+  )
+  .optional()
+  .or(z.literal(""));
+
 export const createVideoSchema = z
   .object({
     mode: z.enum(["local-upload", "manual", "embed"]),
@@ -41,6 +60,7 @@ export const createVideoSchema = z
       .max(5000, "Mô tả tối đa 5000 ký tự")
       .optional()
       .or(z.literal("")),
+    filterKey: optionalVideoFilterKey,
     playbackUrl: z.string().optional().or(z.literal("")),
     embedCodeOrUrl: z
       .string()
@@ -133,12 +153,15 @@ export const createVideoSchema = z
       }
     }
 
-    if (value.publishedAt && !parseAdminPublishedAtInput(value.publishedAt)) {
+    if (
+      value.publishedAt?.trim() &&
+      !parseAdminPublishedAtInput(value.publishedAt)
+    ) {
       context.addIssue({
         code: "custom",
         path: ["publishedAt"],
         message:
-          "Thời gian xuất bản phải có dạng 03/06/2026 hoặc 03/06/2026, 10:41",
+          "Thời gian xuất bản phải có dạng 17/03/1999 hoặc 17/03/1999, 10:41. Có thể nhập nhanh 17031999, 1041.",
       });
     }
   });
@@ -157,6 +180,7 @@ export const editVideoSchema = z
       .max(5000, "Mô tả tối đa 5000 ký tự")
       .optional()
       .or(z.literal("")),
+    filterKey: optionalVideoFilterKey,
     playbackUrl: z.string().optional().or(z.literal("")),
     thumbnailUrl: z.string().optional().or(z.literal("")),
     durationSeconds: optionalNonNegativeInteger("Thời lượng"),

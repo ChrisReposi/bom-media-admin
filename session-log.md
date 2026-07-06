@@ -2,6 +2,234 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-04 — Admin Web video filterKey UI
+
+### Changed
+
+- Added optional `filterKey` to video types, admin video list params, create payloads, LOCAL_FILE upload init payloads, and update payloads.
+- Added frontend `filterKey` normalization/validation matching the backend contract: lowercase letters, numbers, underscores, max 64 chars, and reserved `all` rejected.
+- Added `filterKey` fields to Create/Edit Video modals with blur normalization and Vietnamese validation copy.
+- Added `/videos` filter-by-key UI while preserving manual search, status tabs, pagination, abort/request-version guards, and inline search errors.
+- Added Dashboard share-link picker filter-by-key support while preserving selected video IDs, search debounce/min-length, load more, cache keys, manual refresh, and lazy thumbnails.
+- Added key badges/metadata display on video cards, Dashboard ready-video cards, and video detail info panel.
+- Updated Admin Web docs/checklists with `filterKey` behavior and deploy ordering.
+
+### Verified
+
+- `yarn typecheck` passed.
+- `yarn lint` passed.
+- `yarn format:check` initially flagged three touched TSX files; focused Prettier was run on those files and `yarn format:check` then passed.
+- `yarn build` passed.
+- `yarn test` ran the current placeholder script (`TODO_TEST: Admin web tests will be added later`) successfully.
+- `git diff --check` passed.
+- `git ls-files --others --exclude-standard | findstr /i "package-lock pnpm-lock"` found no npm/pnpm lockfiles.
+
+### Pending
+
+- Deploy backend API with the `VideoAsset.filterKey` migration before deploying this Admin Web build.
+- Manual browser smoke tests against the updated backend: create/edit key, `/videos` key filter, Dashboard key filter, share-link creation with selected videos preserved across filters.
+
+## 2026-07-03 — Dashboard initial video load after refresh
+
+### Root cause
+
+- `src/main.tsx` uses `React.StrictMode`, so local dev can mount, unmount, and remount Dashboard.
+- The first Dashboard video request could be aborted during StrictMode cleanup.
+- `dashboardCache.ts` deduped in-flight video page requests through a module-level `videoPageRequests` map, so the second mount could receive the aborted promise instead of starting a fresh request.
+- `DashboardPage.tsx` marked `hasLoadedVideos=true` in `finally` even for canceled initial requests, causing the video picker to leave skeleton state with an empty video list until manual refresh bypassed cache.
+
+### Changed
+
+- Added `dedupeRequests?: boolean` to `loadDashboardVideoPage()` while preserving successful in-memory page caching and stale-time behavior.
+- Made Dashboard first-page video requests opt out of in-flight request dedupe because they are tied to an AbortController lifecycle.
+- Updated Dashboard canceled-request handling so a canceled first video load does not mark videos as successfully loaded.
+- Incremented the video request version on Dashboard unmount before aborting, preventing stale StrictMode cleanup work from updating obsolete state.
+- Kept manual `Tải lại`, website loading, search, load more, lazy thumbnails, and share-link creation behavior unchanged.
+
+Files changed in this pass:
+
+```txt
+src/features/dashboard/dashboardCache.ts
+src/pages/DashboardPage.tsx
+session-log.md
+```
+
+### Verified
+
+- `yarn typecheck` passed.
+- `yarn lint` passed.
+- `yarn format:check` passed.
+- `yarn build` passed.
+
+### Pending
+
+- Browser Network verification on `http://localhost:5173/`: refresh Dashboard repeatedly and confirm the first READY video page loads automatically without clicking `Tải lại`.
+- Verify quick Dashboard → `/videos` → Dashboard navigation uses fresh cache or loads automatically.
+- Verify Dashboard search, clear search, Load more, and manual refresh still work.
+
+## 2026-06-29 — Cross-project admin video search pipeline audit
+
+### Changed
+
+- Audited the Admin Web Dashboard search path against the backend search-hardening work in `bom-media-api`.
+- Preserved the existing Dashboard implementation:
+  - 24-item READY video pages
+  - 400 ms debounce
+  - normalized search text
+  - two-character minimum before calling `/admin/videos`
+  - abortable first-page video requests
+  - inline picker hint/error UI
+  - successful-response dashboard cache
+  - lazy, cached, concurrency-limited LOCAL_FILE thumbnails
+- No additional Admin Web code changes were needed in this pass beyond the existing uncommitted Dashboard search-safety files.
+
+### Verified
+
+- `yarn typecheck` passed.
+- `yarn lint` passed.
+- `yarn format:check` passed.
+- `yarn build` passed.
+- No `package-lock.json` or `pnpm-lock.yaml` was found in the Admin Web or API repo roots.
+
+### Pending
+
+- Deploy the API search fix first, running `yarn prisma migrate deploy` on production only if the backend migration has not been applied.
+- Deploy the rebuilt Admin Web after the API deploy.
+- Manually verify Dashboard search:
+  - one-character input such as `i` sends no API request
+  - valid input such as `i fell` sends one debounced request
+  - special characters do not crash the page
+  - clearing search reloads READY videos
+  - Load more works for normal and searched lists
+  - selected videos persist and share-link creation still succeeds
+
+## 2026-06-29 — Dashboard video search safety hardening
+
+### Root cause
+
+- Dashboard video pagination, load more, cache, and thumbnail request throttling were already in place.
+- The remaining frontend risk was the search-as-you-type path: one-character searches such as `search=i` could still be sent to `/admin/videos`, and stale first-page search requests were only ignored by version guards instead of being actively canceled.
+- Backend search failures are being fixed separately, but the Admin Web should avoid expensive low-signal search requests and keep search failures local to the video picker.
+
+### Changed
+
+- Added Dashboard video search constants:
+  - debounce: 400 ms
+  - minimum search length: 2 characters
+  - maximum normalized search length: 80 characters
+- Added Dashboard search normalization: trim, collapse repeated whitespace, and cap to 80 characters before using the value for debounced search, API params, and cache keys.
+- Short non-empty searches now skip `/admin/videos` entirely and show the inline hint: `Nhập ít nhất 2 ký tự để tìm video.`
+- Added optional `AbortSignal` support to `getVideos()` and pass it to Axios.
+- Dashboard now aborts stale first-page video requests, keeps the request-version guard, and suppresses errors for canceled requests.
+- Search failures after initial load now show as an inline picker error with a `Thử lại` action instead of replacing the Dashboard with a global red error or toast-spamming during typing.
+- Load more now refuses to run while search debounce is pending, the first page is refreshing, the query is below minimum length, or the current picker search is in an error state.
+- Existing selected video IDs remain untouched when search changes, including when selected videos are hidden by the current search.
+- Dashboard video cache keys now normalize search whitespace; successful responses remain cached, while canceled/failed/short-search states are not cached.
+
+Files changed:
+
+```txt
+src/pages/DashboardPage.tsx
+src/features/dashboard/dashboardCache.ts
+src/features/dashboard/dashboardTypes.ts
+src/features/dashboard/components/ShareLinkComposer.tsx
+src/features/dashboard/components/ReadyVideoPicker.tsx
+src/features/videos/videoApi.ts
+session-log.md
+```
+
+### Verified
+
+- `yarn typecheck` passed.
+- `yarn lint` passed.
+- `yarn format:check` passed.
+- `yarn build` passed.
+- `git diff --check` passed with Windows LF-to-CRLF working-copy notices only.
+- No `package-lock.json` or `pnpm-lock.yaml` was created.
+
+### Manual test notes
+
+- Browser/API-panel manual verification was not run in this session.
+- Recommended manual checks:
+  - Open Dashboard and confirm the initial `/admin/videos` request uses `limit=24`.
+  - Type `i` and confirm no `/admin/videos?...search=i` request is sent.
+  - Confirm the picker shows `Nhập ít nhất 2 ký tự để tìm video.` without a global Dashboard error.
+  - Type `i fell` and confirm only one debounced request is sent after typing pauses.
+  - Type quickly through `i`, `i `, `i f`, `i fe`, `i fel`, `i fell` and confirm stale requests are canceled or ignored.
+  - Clear search and confirm normal READY videos reload.
+  - Confirm Load more works for normal and valid search results.
+  - Confirm selected videos remain selected across search changes and share-link creation still uses the selected IDs.
+  - Confirm no secrets, tokens, or Authorization headers appear in console logs.
+
+### Pending
+
+- Run the manual browser checks above against a local or production-like backend after the backend search fix is deployed.
+
+## 2026-06-29 — Hostinger SPA fallback for Admin Web deep routes
+
+### Root cause
+
+- Admin Web uses React Router history routing through `createBrowserRouter`.
+- Local Vite dev/preview servers fall back to `index.html`, but Hostinger Apache/LiteSpeed was only serving real files/folders.
+- Direct opens or browser refreshes on extensionless client routes such as `/videos`, `/websites`, and `/videos/:videoId` therefore returned Hostinger's document-level 404 before React loaded.
+- This was a static hosting rewrite issue, not a React route, API, or auth bug.
+
+### Changed
+
+- Updated `public/.htaccess` with `Options -MultiViews` and an Apache rewrite fallback to serve `index.html` for extensionless Admin Web routes.
+- Kept existing file/directory handling before the fallback so real assets continue to be served normally.
+- Excluded `/api` from the fallback in case the admin domain ever proxies API requests.
+- Preserved no-cache headers for `index.html`; immutable `/assets/*` caching remains in `public/assets/.htaccess`.
+- Updated Hostinger/Cloudflare deployment notes and production smoke-test docs to require uploading hidden `.htaccess` files and verifying deep-route refresh behavior.
+
+Files changed:
+
+```txt
+public/.htaccess
+docs/05_DEPLOYMENT_HOSTINGER_CLOUDFLARE.md
+docs/07_PRODUCTION_CHECKLIST.md
+docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
+session-log.md
+```
+
+### Verified
+
+- `yarn.cmd typecheck` passed.
+- `yarn.cmd lint` passed.
+- `yarn.cmd build` passed.
+- `yarn.cmd format:check` passed.
+- Focused Markdown Prettier check passed for the deployment/checklist/smoke-test docs and this log entry.
+- `git diff --check` passed with Windows LF-to-CRLF working-copy notices only.
+- `dist/.htaccess` and `dist/assets/.htaccess` were copied into the production artifact.
+- Forbidden lockfile scan found no `package-lock.json` or `pnpm-lock.yaml`.
+
+### Manual production test notes
+
+- Live pre-deploy curl checks on `bom-media-admin.site` confirmed the current production state still needs the rebuilt artifact uploaded:
+  - `/` returns `200 OK` and serves Admin Web `index.html`.
+  - `/videos`, `/websites`, and `/videos/fdd79f89-e372-456d-a30e-c907b0d0d75e` return Hostinger `404 Not Found`.
+  - A real current hashed JS asset returns `200 OK` with `Cache-Control: public, max-age=31536000, immutable`.
+  - A missing `.js` asset returns `404 Not Found`.
+- After deployment, verify Hostinger uploads hidden files and that `.htaccess` exists at the active document root, usually `public_html/.htaccess` for `bom-media-admin.site`.
+- Run again after deployment:
+
+  ```bash
+  curl -I https://bom-media-admin.site/
+  curl -I https://bom-media-admin.site/videos
+  curl -I https://bom-media-admin.site/websites
+  curl -I https://bom-media-admin.site/videos/fdd79f89-e372-456d-a30e-c907b0d0d75e
+  curl -I https://bom-media-admin.site/assets/<real-built-js-file>.js
+  ```
+
+- Expected result after the rebuilt `dist` is uploaded: extensionless SPA routes return `200 OK` and serve Admin Web HTML; real hashed assets return their asset content type and immutable cache header; missing extension-based assets should not be rewritten to `index.html`.
+- The unrelated `td.doubleclick.net/... 404` console request is not part of this SPA fallback fix.
+
+### Pending
+
+- Deploy the rebuilt `dist` contents, including hidden `.htaccess`, to Hostinger.
+- Verify direct browser open and refresh for `/videos`, `/websites`, and `/videos/:videoId`.
+- Confirm logged-out protected deep routes load the app shell and redirect to `/login` instead of showing Hostinger 404.
+
 ## 2026-06-23 — Admin-wide route and bundle performance hardening
 
 ### Audit
@@ -630,3 +858,39 @@ The user wants the Admin Web to become the only management interface. Public web
 - Add share-link history/list/revoke UI in Admin Web.
 - Verify Settings password-change UI.
 - Add E2E smoke tests.
+
+## 2026-07-03 — Videos search guard and compact publishedAt input
+
+### Changed
+
+- Hardened `/videos` manual search so one-character input is handled locally with the hint `Nhập ít nhất 2 ký tự để tìm video.` and does not call `/admin/videos`.
+- Normalized VideosPage search input by trimming, collapsing spaces and capping to 80 characters before applying it.
+- Added AbortController cancellation and a request-version guard for VideosPage list requests so stale search/status/page requests cannot overwrite newer results.
+- Added an inline VideosPage search retry message while preserving existing video results on search failures.
+- Extended create-video publishedAt utilities to normalize and parse compact local date/time input such as `17031999`, `170319991041`, `17031999,1041`, and `17031999, 1041`.
+- Updated CreateVideoModal to format publishedAt on blur/submit, keep the same ISO API payload behavior, and show helper/error text for quick compact input.
+
+Files changed in this pass:
+
+```txt
+src/pages/VideosPage.tsx
+src/features/videos/videoDateUtils.ts
+src/features/videos/videoSchemas.ts
+src/features/videos/components/CreateVideoModal.tsx
+session-log.md
+```
+
+### Verified
+
+- `yarn typecheck` passed.
+- `yarn lint` passed.
+- `yarn format:check` initially reported formatting drift in `VideosPage.tsx` and `videoDateUtils.ts`; targeted Prettier was run on the touched files.
+- `yarn format:check` passed after formatting.
+- `yarn build` passed.
+- Lockfile scan found no `package-lock.json` or `pnpm-lock.yaml`.
+
+### Pending
+
+- Manual browser check on `/videos`: one-character search sends no request, `msa` sends one valid request, clearing search restores the normal list, and pagination keeps the active search.
+- Manual browser check in CreateVideoModal: `17031999`, `17031999,1041`, and `17031999, 1041` format correctly; invalid date/time values show validation errors; created payload still sends ISO `publishedAt`.
+- Deploy the backend API search fix before relying on production Admin Web search behavior.

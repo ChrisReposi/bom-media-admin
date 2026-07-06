@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 
 import {
   formatDuration,
+  formatVideoFilterKey,
   formatViews,
   getProviderLabel,
 } from "../videoFormatters";
@@ -33,6 +34,7 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
       : isEmbedVideo
         ? video.embedUrl
         : video.playbackUrl;
+  const filterKeyLabel = formatVideoFilterKey(video.filterKey);
 
   async function copyPlayableUrl(): Promise<void> {
     if (!playableUrl) {
@@ -120,6 +122,7 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
           />
         ) : null}
         <InfoRow label="Status" value={statusLabels[video.status]} />
+        <InfoRow label="Key lọc" value={filterKeyLabel ?? "Chưa gắn key"} />
         <InfoRow
           label="Duration"
           value={formatDuration(video.durationSeconds)}

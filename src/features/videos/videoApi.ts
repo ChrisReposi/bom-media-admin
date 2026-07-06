@@ -4,6 +4,7 @@ import {
   normalizeApiError,
 } from "@/lib/api/apiError";
 
+import { normalizeVideoFilterKeyInput } from "./videoFilterKeyUtils";
 import type {
   CreateVideoEmbedPayload,
   CreateVideoManualPayload,
@@ -33,10 +34,15 @@ type GetVideosParams = {
   page?: number;
   limit?: number;
   search?: string;
+  filterKey?: string;
   status?: VideoStatus;
   provider?: VideoProvider;
   sortBy?: VideoSortBy;
   sortOrder?: VideoSortOrder;
+};
+
+type GetVideosOptions = {
+  signal?: AbortSignal;
 };
 
 type VideoDetailResponse = VideoAsset | { data: VideoAsset };
@@ -87,14 +93,20 @@ function cleanThumbnailUrl(value: string | undefined): string | undefined {
   return trimmed;
 }
 
+function cleanVideoFilterKey(value: unknown): string | undefined {
+  return normalizeVideoFilterKeyInput(value) || undefined;
+}
+
 function cleanManualPayload(
   payload: CreateVideoManualPayload,
 ): CreateVideoManualPayload {
   const thumbnailUrl = cleanThumbnailUrl(payload.thumbnailUrl);
+  const filterKey = cleanVideoFilterKey(payload.filterKey);
 
   return {
     title: payload.title.trim(),
     playbackUrl: payload.playbackUrl.trim(),
+    ...(filterKey ? { filterKey } : {}),
     ...(payload.description?.trim()
       ? { description: payload.description.trim() }
       : {}),
@@ -114,10 +126,12 @@ function cleanEmbedPayload(
   payload: CreateVideoEmbedPayload,
 ): CreateVideoEmbedPayload {
   const thumbnailUrl = cleanThumbnailUrl(payload.thumbnailUrl);
+  const filterKey = cleanVideoFilterKey(payload.filterKey);
 
   return {
     title: payload.title.trim(),
     embedCodeOrUrl: payload.embedCodeOrUrl.trim(),
+    ...(filterKey ? { filterKey } : {}),
     ...(payload.description?.trim()
       ? { description: payload.description.trim() }
       : {}),
@@ -137,6 +151,7 @@ function appendOptionalVideoFormFields(
   formData: FormData,
   payload: {
     description?: string;
+    filterKey?: string;
     thumbnailUrl?: string;
     thumbnailFile?: File;
     durationSeconds?: number;
@@ -146,9 +161,14 @@ function appendOptionalVideoFormFields(
   },
 ): void {
   const thumbnailUrl = cleanThumbnailUrl(payload.thumbnailUrl);
+  const filterKey = cleanVideoFilterKey(payload.filterKey);
 
   if (payload.description?.trim()) {
     formData.append("description", payload.description.trim());
+  }
+
+  if (filterKey) {
+    formData.append("filterKey", filterKey);
   }
 
   if (payload.thumbnailFile) {
@@ -232,6 +252,12 @@ function emitLocalUploadProgress(
 }
 
 function cleanUpdatePayload(payload: UpdateVideoPayload): UpdateVideoPayload {
+  const hasFilterKey = Object.prototype.hasOwnProperty.call(
+    payload,
+    "filterKey",
+  );
+  const filterKey = cleanVideoFilterKey(payload.filterKey);
+
   return {
     ...(payload.title !== undefined ? { title: payload.title.trim() } : {}),
     ...(payload.description !== undefined
@@ -242,6 +268,7 @@ function cleanUpdatePayload(payload: UpdateVideoPayload): UpdateVideoPayload {
     ...(payload.playbackUrl?.trim()
       ? { playbackUrl: payload.playbackUrl.trim() }
       : {}),
+    ...(hasFilterKey ? { filterKey: filterKey ?? null } : {}),
     ...(payload.thumbnailUrl !== undefined
       ? payload.thumbnailUrl?.trim()
         ? { thumbnailUrl: payload.thumbnailUrl.trim() }
@@ -261,17 +288,20 @@ function cleanUpdatePayload(payload: UpdateVideoPayload): UpdateVideoPayload {
 
 export async function getVideos(
   params?: GetVideosParams,
+  options?: GetVideosOptions,
 ): Promise<VideosListResponse> {
   const response = await axiosClient.get<VideosListResponse>("/admin/videos", {
     params: {
       page: params?.page,
       limit: params?.limit,
       search: params?.search?.trim() || undefined,
+      filterKey: cleanVideoFilterKey(params?.filterKey),
       status: params?.status,
       provider: params?.provider,
       sortBy: params?.sortBy ?? "createdAt",
       sortOrder: params?.sortOrder ?? "desc",
     },
+    signal: options?.signal,
   });
 
   return response.data;
@@ -412,6 +442,7 @@ async function initLocalVideoUpload(
   signal?: AbortSignal,
 ): Promise<VideoUploadSession> {
   const totalChunks = Math.ceil(payload.file.size / chunkSizeBytes);
+  const filterKey = cleanVideoFilterKey(payload.filterKey);
   const response = await axiosClient.post<InitLocalVideoUploadResponse>(
     "/admin/videos/upload-local/init",
     {
@@ -421,6 +452,7 @@ async function initLocalVideoUpload(
       totalBytes: payload.file.size,
       totalChunks,
       chunkSizeBytes,
+      ...(filterKey ? { filterKey } : {}),
       ...(payload.description?.trim()
         ? { description: payload.description.trim() }
         : {}),

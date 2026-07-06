@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import {
   formatDuration,
   formatRelativeTime,
+  formatVideoFilterKey,
   formatViews,
   getProviderLabel,
 } from "../videoFormatters";
@@ -88,6 +89,7 @@ export function VideoCard({
     : "Vô hiệu hoá video";
   const publishedText = formatRelativeTime(video.publishedAt);
   const viewsText = formatViews(video.viewCount);
+  const filterKeyLabel = formatVideoFilterKey(video.filterKey);
   const fallbackThumbnailUrl = useMemo(
     () =>
       video.playbackUrl
@@ -271,6 +273,11 @@ export function VideoCard({
           <p className="mt-1.5 text-sm text-(--admin-text-muted)">
             {viewsText} lượt xem · {publishedText}
           </p>
+          {filterKeyLabel ? (
+            <span className="mt-2 inline-flex rounded-full bg-(--admin-primary-soft) px-2 py-1 text-xs font-medium text-(--admin-primary)">
+              #{filterKeyLabel}
+            </span>
+          ) : null}
         </div>
 
         {canToggleStatus ? (

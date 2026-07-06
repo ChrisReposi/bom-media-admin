@@ -75,6 +75,7 @@ Dashboard should support quick share-link creation:
 
 - load active websites
 - load READY shareable videos
+- filter READY videos by optional backend `filterKey`
 - select website
 - select one or more videos
 - set label/max views/expiry
@@ -89,6 +90,7 @@ Videos page should support:
 
 - list
 - filters by status
+- optional `filterKey` create/edit metadata and list filtering
 - pagination
 - loading/error/empty states
 - create modal

@@ -78,6 +78,8 @@ GET    /api/v1/admin/videos/:id/thumbnail
 Frontend rules:
 
 - list with pagination/filter
+- optional `filterKey` is supported on admin video list/create/update/upload flows; omit `filterKey` to list all videos
+- valid `filterKey` values are lowercase letters, numbers and underscores such as `sml`, `msa`, `judge_judy`; `all` is reserved and must not be sent as a key
 - show only safe response fields
 - use admin-only binary endpoint only for admin preview
 - use LOCAL_FILE chunked upload as the preferred large-video create path

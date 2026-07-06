@@ -9,7 +9,13 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FocusEvent,
+} from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -26,6 +32,7 @@ import {
   updateVideo,
 } from "../videoApi";
 import { dateTimeLocalToIso, isoToDateTimeLocal } from "../videoDateUtils";
+import { normalizeVideoFilterKeyInput } from "../videoFilterKeyUtils";
 import { editVideoSchema, type EditVideoFormValues } from "../videoSchemas";
 import {
   VIDEO_STATUS_OPTIONS,
@@ -58,6 +65,7 @@ function buildDefaultValues(video: VideoAsset): EditVideoFormValues {
   return {
     title: video.title,
     description: video.description ?? "",
+    filterKey: video.filterKey ?? "",
     playbackUrl: video.playbackUrl ?? "",
     thumbnailUrl:
       video.sourceType === "LOCAL_FILE" && video.localThumbnailAsset
@@ -114,6 +122,7 @@ export function EditVideoModal({
     handleSubmit,
     register,
     reset,
+    setValue,
     watch,
   } = useForm<EditVideoFormValues>({
     resolver: editVideoResolver,
@@ -305,6 +314,21 @@ export function EditVideoModal({
     }
   }
 
+  function handleFilterKeyBlur(event: FocusEvent<HTMLInputElement>): void {
+    const normalizedValue = normalizeVideoFilterKeyInput(event.target.value);
+
+    if (normalizedValue !== event.target.value) {
+      setValue("filterKey", normalizedValue, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }
+
+  const filterKeyField = register("filterKey", {
+    onBlur: handleFilterKeyBlur,
+  });
+
   const onSubmit = handleSubmit(async (values) => {
     try {
       const customThumbnailUrl = values.thumbnailUrl?.trim() || undefined;
@@ -318,11 +342,13 @@ export function EditVideoModal({
       const durationSeconds = getNumericValue(values.durationSeconds);
       const viewCount = getNumericValue(values.viewCount);
       const description = values.description?.trim() || undefined;
+      const filterKey = normalizeVideoFilterKeyInput(values.filterKey ?? "");
       const playbackUrlValue = values.playbackUrl?.trim() || undefined;
 
       const payload: UpdateVideoPayload = {
         title: values.title,
         status: values.status,
+        filterKey: filterKey || null,
         ...(description ? { description } : {}),
         ...(playbackUrlValue ? { playbackUrl: playbackUrlValue } : {}),
         ...(derivedSubmitThumbnailUrl
@@ -415,6 +441,26 @@ export function EditVideoModal({
                 {...register("description")}
               />
               <FieldError message={errors.description?.message} />
+            </div>
+
+            <div>
+              <label
+                className="mb-2 block text-sm font-medium text-[var(--admin-text-strong)]"
+                htmlFor="edit-video-filter-key"
+              >
+                Key lọc video
+              </label>
+              <Input
+                id="edit-video-filter-key"
+                className={fieldClass(!!errors.filterKey)}
+                placeholder="sml, msa, judge_judy, coryxkenshin"
+                aria-invalid={!!errors.filterKey}
+                {...filterKeyField}
+              />
+              <p className="mt-2 text-xs text-[var(--admin-text-muted)]">
+                Dùng để lọc nhanh video theo chủ đề/kênh. Có thể bỏ trống.
+              </p>
+              <FieldError message={errors.filterKey?.message} />
             </div>
 
             <div className="md:col-span-2">

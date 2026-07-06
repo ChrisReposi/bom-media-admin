@@ -50,6 +50,7 @@ docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
 - [ ] Share-link creation shows raw URL only once.
 - [ ] Settings password-change UI implemented; production/manual smoke test still required.
 - [ ] LOCAL_FILE server-storage upload creates a video through chunked upload.
+- [ ] Video `filterKey` create/edit/list filters work after backend migration is deployed.
 - [ ] LOCAL_FILE thumbnail upload uses backend local thumbnail storage.
 - [ ] LOCAL_FILE preview works without exposing storage keys/paths.
 - [ ] Video card READY/DISABLED status toggle uses modal confirmation and no browser `window.confirm`.
@@ -58,6 +59,8 @@ docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
 - [ ] Purge confirmation can permanently delete an unused LOCAL_FILE video.
 - [ ] CSP/security headers added.
 - [ ] Route/page chunks load on demand and create/edit video modals remain functional.
+- [ ] Hostinger SPA fallback is deployed: direct open/refresh for `/videos`, `/websites`, and `/videos/:videoId` returns `index.html`, not Hostinger 404.
+- [ ] Hidden `dist/.htaccess` is uploaded to the domain document root, e.g. `public_html/.htaccess`.
 - [ ] `index.html` is no-cache/no-store and `/assets/*` is one-year immutable.
 - [ ] Admin API and authenticated media responses are not publicly cached.
 - [ ] No secrets in built files.
@@ -163,6 +166,7 @@ Use `docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md` as the source of truth for Admi
 - [ ] Create manual video.
 - [ ] Create embed video.
 - [ ] Upload LOCAL_FILE server-storage video.
+- [ ] Create/edit videos with `filterKey`, filter `/videos`, and filter Dashboard picker by key.
 - [ ] Open video detail/player.
 - [ ] Replace LOCAL_FILE thumbnail.
 - [ ] Disable a LOCAL_FILE test video and confirm storage files remain.

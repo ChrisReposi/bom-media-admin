@@ -15,6 +15,7 @@ import {
   getDashboardThumbnailCacheKey,
   type DashboardThumbnailLease,
 } from "@/features/dashboard/dashboardThumbnailCache";
+import type { DashboardVideoSearchStatus } from "@/features/dashboard/dashboardTypes";
 import {
   filterVideosBySource,
   getVideoSourceLabel,
@@ -25,6 +26,7 @@ import {
   isShareableVideo,
   type VideoSourceFilter,
 } from "@/features/videos/videoSourceUtils";
+import { formatVideoFilterKey } from "@/features/videos/videoFormatters";
 import type { VideoAsset } from "@/features/videos/videoTypes";
 
 type ReadyVideoPickerProps = {
@@ -33,9 +35,14 @@ type ReadyVideoPickerProps = {
   onToggle: (videoId: string) => void;
   totalVideos?: number;
   searchQuery?: string;
+  filterKey?: string;
+  searchStatus?: DashboardVideoSearchStatus;
+  searchError?: string | null;
+  searchMinLength?: number;
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  onRetrySearch?: () => void;
 };
 
 type FilterTab = {
@@ -50,9 +57,14 @@ export function ReadyVideoPicker({
   onToggle,
   totalVideos,
   searchQuery,
+  filterKey,
+  searchStatus = "idle",
+  searchError,
+  searchMinLength = 2,
   hasMore,
   isLoadingMore,
   onLoadMore,
+  onRetrySearch,
 }: ReadyVideoPickerProps) {
   const [sourceFilter, setSourceFilter] = useState<VideoSourceFilter>("all");
   const selectedVideoIdSet = useMemo(
@@ -134,10 +146,33 @@ export function ReadyVideoPicker({
         className="max-h-105 overflow-y-auto pr-2 scrollbar-gutter-stable md:max-h-172.5 xl:max-h-140"
         data-ready-video-scroll-root
       >
+        {searchStatus === "too-short" ? (
+          <div className="mb-3 rounded-lg border border-(--admin-border) bg-(--admin-surface-alt) p-3 text-sm text-(--admin-text-muted)">
+            Nhập ít nhất {searchMinLength} ký tự để tìm video.
+          </div>
+        ) : null}
+
+        {searchStatus === "error" && searchError ? (
+          <div className="mb-3 flex flex-col gap-3 rounded-lg border border-(--admin-danger-soft) bg-(--admin-danger-soft) p-3 text-sm text-(--admin-danger) sm:flex-row sm:items-center sm:justify-between">
+            <span>{searchError}</span>
+            {onRetrySearch ? (
+              <Button
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={onRetrySearch}
+              >
+                Thử lại
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
         {filteredVideos.length === 0 ? (
           <div className="rounded-lg border border-dashed border-(--admin-border) p-4 text-sm text-(--admin-text)">
             {getEmptyStateText({
               searchQuery,
+              filterKey,
               shareableCount: shareableVideos.length,
               sourceFilter,
               titleFilteredCount: videos.length,
@@ -189,6 +224,7 @@ const ReadyVideoCard = memo(function ReadyVideoCard({
 }: ReadyVideoCardProps) {
   const isDisabled = !isShareableVideo(video);
   const sourceLabel = getVideoSourceLabel(video);
+  const filterKeyLabel = formatVideoFilterKey(video.filterKey);
   const thumbnailCacheKey = getDashboardThumbnailCacheKey({
     videoId: video.id,
     thumbnailUrl: video.thumbnailUrl,
@@ -255,6 +291,11 @@ const ReadyVideoCard = memo(function ReadyVideoCard({
         <p className="mt-2 truncate font-mono text-xs text-(--admin-text-muted)">
           {video.id}
         </p>
+        {filterKeyLabel ? (
+          <span className="mt-2 inline-flex rounded-full bg-(--admin-primary-soft) px-2 py-1 text-xs font-medium text-(--admin-primary)">
+            #{filterKeyLabel}
+          </span>
+        ) : null}
       </div>
     </label>
   );
@@ -416,11 +457,16 @@ function getSafeThumbnailUrl(thumbnailUrl: string | null): string | null {
 
 function getEmptyStateText(params: {
   searchQuery?: string;
+  filterKey?: string;
   totalVideos: number;
   titleFilteredCount: number;
   shareableCount: number;
   sourceFilter: VideoSourceFilter;
 }): string {
+  if (params.filterKey && params.titleFilteredCount === 0) {
+    return `KhÃ´ng cÃ³ video nÃ o khá»›p vá»›i key "${params.filterKey}".`;
+  }
+
   if (params.searchQuery && params.titleFilteredCount === 0) {
     return `Không tìm thấy video phù hợp với từ khóa "${params.searchQuery}".`;
   }
