@@ -47,61 +47,53 @@ export function WebsiteQuickSelect({
         return (
           <div
             key={website.id}
-            aria-pressed={isSelected}
             className={[
-              "flex items-start gap-3 rounded-lg border py-2 px-4 text-left transition cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--admin-focus-ring)",
+              "rounded-lg border py-2 px-4 transition",
               isSelected
                 ? "border-(--admin-primary) bg-(--admin-primary-soft)"
                 : "border-(--admin-border) bg-(--admin-surface-alt) hover:border-(--admin-border-strong)",
             ].join(" ")}
-            role="button"
-            tabIndex={0}
-            onClick={() => onChange(website.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onChange(website.id);
-              }
-            }}
           >
-            <span
-              aria-hidden="true"
-              className={[
-                "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
-                isSelected
-                  ? "border-(--admin-primary) bg-(--admin-primary) text-(--admin-contrast)"
-                  : "border-(--admin-border-strong) text-transparent",
-              ].join(" ")}
+            <button
+              aria-pressed={isSelected}
+              className="flex w-full items-start gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--admin-focus-ring)"
+              type="button"
+              onClick={() => onChange(website.id)}
             >
-              <Check className="size-3.5" />
-            </span>
+              <span
+                aria-hidden="true"
+                className={[
+                  "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+                  isSelected
+                    ? "border-(--admin-primary) bg-(--admin-primary) text-(--admin-contrast)"
+                    : "border-(--admin-border-strong) text-transparent",
+                ].join(" ")}
+              >
+                <Check className="size-3.5" />
+              </span>
 
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold text-(--admin-text-strong)">
+              <span className="block min-w-0 flex-1 truncate font-semibold text-(--admin-text-strong)">
                 {website.name}
               </span>
+            </button>
 
-              <span className="mt-1 block truncate text-sm text-(--admin-text)">
-                Domain:{" "}
-                {primaryDomain?.domain ? (
-                  <a
-                    href={formatDomainUrl(primaryDomain.domain)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-(--admin-primary) hover:underline inline-flex items-center gap-1 font-medium"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                  >
-                    {primaryDomain.domain}
-                  </a>
-                ) : (
-                  <span className="text-(--admin-text-muted)">
-                    Chưa có domain active — chưa thể tạo URL public
-                  </span>
-                )}
-              </span>
-            </span>
+            <p className="mt-1 truncate pl-8 text-sm text-(--admin-text)">
+              Domain:{" "}
+              {primaryDomain?.domain ? (
+                <a
+                  href={formatDomainUrl(primaryDomain.domain)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-(--admin-primary) hover:underline inline-flex items-center gap-1 font-medium"
+                >
+                  {primaryDomain.domain}
+                </a>
+              ) : (
+                <span className="text-(--admin-text-muted)">
+                  Chưa có domain active — chưa thể tạo URL public
+                </span>
+              )}
+            </p>
           </div>
         );
       })}
