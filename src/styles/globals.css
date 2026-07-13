@@ -105,8 +105,18 @@
   --admin-success-soft: rgba(22, 163, 74, 0.14);
   --admin-danger: #dc2626;
   --admin-danger-soft: rgba(220, 38, 38, 0.12);
+  --admin-warning: #d97706;
+  --admin-warning-soft: rgba(217, 119, 6, 0.14);
+  --admin-info: #0284c7;
+  --admin-info-soft: rgba(2, 132, 199, 0.14);
   --admin-hover-row: rgba(37, 99, 235, 0.06);
   --admin-focus-ring: rgba(37, 99, 235, 0.18);
+  --admin-overlay: rgba(15, 23, 42, 0.45);
+
+  /* Motion durations (theme-independent). Keep UI transitions in the 120–220ms range. */
+  --admin-motion-fast: 120ms;
+  --admin-motion-normal: 180ms;
+  --admin-motion-slow: 220ms;
   --admin-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
   --admin-shadow-strong: 0 22px 52px rgba(37, 99, 235, 0.12);
   --admin-online: #22c55e;
@@ -370,8 +380,13 @@
   --admin-success-soft: rgba(39, 195, 70, 0.2);
   --admin-danger: #ef4444;
   --admin-danger-soft: rgba(239, 68, 68, 0.16);
+  --admin-warning: #f59e0b;
+  --admin-warning-soft: rgba(245, 158, 11, 0.18);
+  --admin-info: #38bdf8;
+  --admin-info-soft: rgba(56, 189, 248, 0.18);
   --admin-hover-row: rgba(255, 255, 255, 0.05);
   --admin-focus-ring: rgba(60, 126, 255, 0.24);
+  --admin-overlay: rgba(0, 0, 0, 0.6);
   --admin-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
   --admin-shadow-strong: 0 22px 52px rgba(0, 0, 0, 0.4);
   --admin-online: #22c55e;
@@ -554,7 +569,7 @@
   --admin-dashboard-compact-button-border: rgba(255, 255, 255, 0.1);
   --admin-dashboard-compact-button-icon: #ffffff;
 
-  --admin-dashboard-modal-surface: lrgba(28, 30, 36, 0.98);
+  --admin-dashboard-modal-surface: rgba(28, 30, 36, 0.98);
   --admin-dashboard-modal-border: rgba(255, 255, 255, 0.1);
   --admin-dashboard-modal-shadow: 0 28px 80px rgba(0, 0, 0, 0.35);
   --admin-dashboard-alert-bg: rgba(37, 99, 235, 0.16);

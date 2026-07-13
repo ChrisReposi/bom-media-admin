@@ -2,98 +2,114 @@
 
 This file records important project context and changes for future Codex sessions.
 
-## 2026-07-10 — Verify CreateVideoModal filterKey in a clean local runtime
+## 2026-07-13 — UX-1 app shell and route states
 
-### Root Cause
-
-- Current Admin Web source and the freshly served Vite module already send normalized `filterKey` for create flows; the issue was stale/inconsistent local runtime or browser state rather than missing form/API-client code.
-- All stale Node processes were stopped, the Vite dependency cache was cleared, and Admin Web was rebuilt and restarted from this repository against the intended local API.
-- The original pre-clean browser request was not available, so the stale process versus stale browser lazy-chunk boundary cannot be identified more narrowly without guessing.
-
-### Runtime Evidence
-
-- A fresh headless Chrome session logged in through the real UI and submitted `CreateVideoModal` in embed mode with `filterKey=sml`.
-- The actual browser create request contained `filterKey: "sml"` and returned `201` with the same key.
-- The following video detail and list responses both contained `filterKey: "sml"`.
-- `VideoInfoPanel` displayed `sml` immediately; opening `EditVideoModal` was not required.
-- The temporary smoke video was disabled and purged after verification.
+Controlled UI/UX upgrade, phase UX-1 (app shell, route/auth states, 404). Presentation,
+copy (Vietnamese with diacritics) and accessibility only. No auth/redirect/routing/API/
+Redux/cache/upload logic changed. Route URLs unchanged. No dependency added — the mobile
+drawer reuses the existing `radix-ui` `Dialog` primitive (already a dependency).
 
 ### Changed
 
-- No Admin Web implementation code was changed in this runtime pass because the actual create request and UI response path passed after clean startup.
-- Updated this session log with the runtime diagnosis and clean-start procedure.
+- Added `src/components/common/AppStatePanel.tsx`: presentation-only status/error panel
+  (role=status/alert, aria-live, spinner with `motion-reduce`, semantic h1, admin tokens).
+  Reused by route-checking (Protected/PublicOnly), session bootstrap checking, bootstrap
+  recovery error, and route lazy-loading — i.e. 5 call sites, so it is a real shared
+  primitive, not a speculative one.
+- `MainLayout.tsx`: rebuilt shell.
+  - Vietnamese nav labels (Tổng quan / Video / Website / Tên miền / Cài đặt); same routes.
+  - Desktop sidebar active state no longer color-only: it adds a left marker bar, bold
+    text and the section icon; NavLink still supplies `aria-current="page"`.
+  - Real mobile navigation drawer via `radix-ui` Dialog: accessible trigger name, backdrop,
+    Close button, Escape-to-close, close-on-select, body scroll lock, focus trap + focus
+    restore (all provided by Radix), width `min(18rem,85vw)` so it never overflows 320px.
+  - Brand demoted from `<h1>` to non-heading text so page `<h1>`s remain the primary heading.
+  - Header shows a contextual section label derived from the route (non-heading) + admin pill.
+  - `handleLogout` thunk/flow kept byte-for-byte identical; the same handler is shared by the
+    desktop and drawer logout buttons, guarded by the existing `isLoggingOut` state (no double
+    submit, no second logout implementation).
+- `ProtectedRoute.tsx` / `PublicOnlyRoute.tsx`: replaced the non-diacritic checking text with
+  `AppStatePanel`. Login condition, `Navigate` redirect, `replace`, and `state={{ from }}` are
+  unchanged.
+- `AuthSessionBootstrap.tsx`: replaced the recovery-error and restoring-session UI with
+  `AppStatePanel`; error panel now shows fixed safe copy ("Không thể kết nối tới máy chủ." /
+  "Kiểm tra kết nối mạng và thử lại.") instead of the raw normalized backend message. All
+  logic (`startedRef`, dispatch order, retry, auth-error/network-error handling, API calls,
+  children conditions) unchanged; the two action handlers are identical, only relocated.
+- `RouteLoadingFallback.tsx`: replaced the fake-data skeleton with a neutral, accessible
+  `AppStatePanel` loader (no simulated data).
+- `NotFoundPage.tsx`: rewritten with `--admin-*` tokens + dark mode, Vietnamese copy, semantic
+  h1, and two actions — "Quay lại" (`navigate(-1)`) and "Về Dashboard" (`/`). No auto-redirect;
+  wildcard routing untouched. Does not claim an access-permission reason.
+- `src/styles/globals.css`: added theme-independent motion-duration tokens
+  `--admin-motion-fast|normal|slow` (120/180/220ms), consumed by the drawer transition (JIT).
 
 ### Verified
 
-- `yarn typecheck` passed.
-- `yarn lint` passed.
-- `yarn format:check` passed.
-- `yarn build` passed.
-- `yarn test` ran the existing placeholder script successfully.
-- Vite started from `C:\Users\Administrator\Desktop\code\bom-media-admin` on port 5173 and used the configured local API.
+- Static checks (before and after): `yarn typecheck`, `yarn lint`, `yarn format:check`,
+  `yarn build` all pass; `git diff --check` clean; scoped Prettier check on changed files passes.
+- Confirmed via diff that guard login conditions, `state.from`, redirects, the logout thunk,
+  and the bootstrap flow are unchanged.
+- Bundle note: the eager main chunk grew ~+12 kB gzip (115→127) because Radix Dialog now ships
+  in the shell for the accessible drawer. Flagged for review; no code-splitting added yet.
+- NOT browser-verified: no Playwright/browser automation is configured in this repo, so
+  responsive breakpoints (320–1440px), drawer open/close/Escape/focus behavior, and light/dark
+  rendering were reasoned about but not exercised in a real browser.
 
 ### Pending
 
-- Existing browser tabs should be hard-refreshed or have local site data cleared before retesting.
-- Deploy the backend API and its `filterKey` migration before any Admin Web production deployment if production has not yet received them.
+- Browser verification of the drawer, route/auth states and 404 across 320/375/768/1024/1280/
+  1440px is still pending (no browser tooling installed; not installing without approval).
+- `../../.prettierignore` (referenced by format scripts) is still missing/external; deferred to
+  UX-8 per instructions (not created in UX-1).
+- Bundle: decide whether the shell drawer should be code-split to recover the ~12 kB gzip.
+- Theme toggle is still only on the login screen; the shell has no in-app theme control (out of
+  UX-1's listed scope — flagged for a later decision).
+- UX-2 (Websites/Domains destructive dialogs) not started; no `window.confirm()` replaced yet.
 
-## 2026-07-10 — Audit CreateVideoModal filterKey persistence
+## 2026-07-13 — UX-0 semantic token baseline
 
-### Confirmed
-
-- `CreateVideoModal` registers and normalizes `filterKey` and includes it for manual, embed, and LOCAL_FILE modes.
-- The API client preserves the key in JSON create payloads, multipart `FormData`, and LOCAL_FILE init metadata.
-- The deployed Admin Web lazy Create Video/API chunks contain the same `filterKey` payload behavior.
-- Current Admin Web source therefore required no create-payload code change; the production symptom is on the deployed API create path/runtime rather than the current form or API client.
-
-### Files Changed
-
-- `session-log.md`
-
-### Verified
-
-- Backend end-to-end local HTTP smoke confirmed manual, embed, multipart, and LOCAL_FILE create responses/details/lists retain their normalized keys.
-- Existing edit payload still sends a normalized key or `null` when clearing.
-- `yarn typecheck` passed.
-- `yarn lint` passed.
-- `yarn format:check` passed.
-- `yarn build` passed.
-- `yarn test` ran the existing placeholder script successfully.
-- `git diff --check` passed and no npm/pnpm lockfiles were found.
-
-### Pending
-
-- Deploy the current backend API and pending Prisma migrations, restart the API, then repeat production create/detail/list checks.
-- Browser Network verification should confirm the production create request contains `filterKey` and the create response returns the same value.
-
-## 2026-07-10 — Harden Dashboard production video search errors
+Controlled UI/UX upgrade, phase UX-0 (baseline + semantic tokens only). No page,
+auth, API, cache, upload, routing, or deployment code was touched. All existing
+`--admin-*` and `--admin-dashboard-*` tokens were preserved (no rename/removal).
 
 ### Changed
 
-- Preserved the existing 400 ms debounce, two-character minimum, AbortController cancellation, request-version guard, cache behavior, load more, and selected-video behavior.
-- Kept previously loaded videos visible when a search or filter request fails.
-- Changed active search failures to the scoped inline message `Không thể tìm video lúc này. Vui lòng thử lại.` and active key-filter failures to `Không thể lọc video lúc này. Vui lòng thử lại.`.
-- Ensured active search/filter failures render in the video picker retry area even when the initial default dataset has not completed, instead of escalating them into a full Dashboard error.
-- Fixed successful website loading to return `true`, so manual Dashboard refresh can correctly report success when both website and video reloads succeed.
-
-### Files Changed
-
-- `src/pages/DashboardPage.tsx`
-- `session-log.md`
+- `src/styles/globals.css`: fixed a real CSS typo in the dark theme —
+  `--admin-dashboard-modal-surface` used the invalid function `lrgba(...)`; changed
+  to `rgba(...)` to match the valid light-mode counterpart. (Token currently has no
+  component consumer, but the value was invalid.)
+- `src/styles/globals.css`: added missing semantic color tokens (light + dark),
+  since no equivalent existed and pages currently hardcode `amber-*` / `bg-black/…`:
+  - `--admin-warning` / `--admin-warning-soft`
+  - `--admin-info` / `--admin-info-soft`
+  - `--admin-overlay` (dialog/backdrop scrim, replaces future hardcoded `bg-black/55`)
+- These additions are additive only; nothing consumes them yet, so there is no
+  visual change in this phase.
 
 ### Verified
 
-- `yarn typecheck` passed.
-- `yarn lint` passed.
-- `yarn format:check` passed.
-- `yarn build` passed.
-- `yarn test` ran the existing placeholder script successfully.
-- `git diff --check` passed; no npm/pnpm lockfiles were found.
+- Baseline (before edits): `yarn typecheck`, `yarn lint`, `yarn format:check`,
+  `yarn build` all passed; working tree clean; no `package-lock.json`/`pnpm-lock.yaml`.
+- Note: `../../.prettierignore` (referenced by the `format`/`format:check` scripts)
+  is missing, but Prettier tolerates the missing ignore-path and the check still passes.
+- Note: `yarn test` is a placeholder `echo` (no real automated test suite exists);
+  running it only confirms the script exits, not that behavior is tested.
+- After edits: `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build`,
+  `git diff --check` all passed; only `src/styles/globals.css` and `session-log.md`
+  changed; no new dependency or lockfile.
 
 ### Pending
 
-- Manual browser verification against the deployed current API: refresh Dashboard, search `jeffy`, case variants and no-result terms, clear search, retry a simulated failure, and use manual `Tải lại`.
-- Deploy/restart the backend API before the Admin Web build. If production search still returns `500`, capture the sanitized backend exception/Prisma code; Admin Web cannot determine the database-side cause.
+- Motion-duration tokens intentionally deferred to UX-1 (just-in-time, when a
+  component first consumes them) rather than defined speculatively.
+- Reusable primitives (dialog, page header, status badge, pagination, etc.) are NOT
+  created yet; they will be added just-in-time in the phase that first uses them.
+- Controlled reduction of `--admin-dashboard-*` gradient/glassmorphism deferred to
+  later UX phases as pages are migrated.
+- No page components migrated; no `window.confirm()` replaced; no Vietnamese-copy
+  fixes applied yet — those belong to UX-1+.
+  > > > > > > > d9521a9 (feat(admin): establish UX shell and route states)
 
 ## 2026-07-04 — Admin Web video filterKey UI
 

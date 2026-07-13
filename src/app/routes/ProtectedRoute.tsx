@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
+import { AppStatePanel } from "@/components/common/AppStatePanel";
 import { useAppSelector } from "@/store/hooks";
 
 export function ProtectedRoute() {
@@ -10,9 +11,11 @@ export function ProtectedRoute() {
 
   if (auth.status === "checking") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-(--admin-app-bg) px-6 text-sm text-(--admin-text)">
-        Dang kiem tra phien dang nhap...
-      </main>
+      <AppStatePanel
+        description="Vui lòng chờ trong giây lát."
+        fullScreen
+        title="Đang kiểm tra phiên đăng nhập…"
+      />
     );
   }
 
