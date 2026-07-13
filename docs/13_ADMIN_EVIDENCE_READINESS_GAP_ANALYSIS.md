@@ -128,6 +128,9 @@ Returned only in the purge response.
 
 The `rawToken` / one-time `publicUrl` are shown only immediately after creation and
 must never be persisted in the Admin Web (Redux, local/session storage, logs, URLs).
+The share-link **list/history** response (`ShareLink`) carries no `rawToken` field and
+must never be used to recover a raw token; a future revoke action operates on the safe
+record identifier (`shareLinkId`), not on any raw token in the UI.
 
 ### 4.8 Admin/account metadata (`SafeAdmin`)
 
