@@ -2,6 +2,54 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-13 — UX-7 evidence readiness gap analysis
+
+Documentation-only phase. No source code, routes, or UI changed.
+
+### Changed
+
+- Added `docs/13_ADMIN_EVIDENCE_READINESS_GAP_ANALYSIS.md`: a gap analysis of how far
+  the Admin Web can support an evidence-readiness workflow. It inventories only the
+  fields confirmed in the committed types/API (`videoTypes`, `websiteTypes`,
+  `domainTypes`, `authTypes`, `dashboardTypes`, and the `*Api.ts` clients), classifies
+  data by provenance, and separates displayed / available-not-displayed /
+  documented-no-admin-API / backend-required / not-supported. It follows the required
+  16-section structure, a readiness matrix (no scores), proposed future phases E0–E8,
+  and explicit non-goals. Every proposed model/field/module is marked `PROPOSED`.
+- Key confirmed findings recorded in the doc:
+  - Share-link **list + revoke** already exist in the API (`getShareLinks`,
+    `revokeShareLink`) and types (`ShareLink`, `ShareLinksListResponse`) but have no UI
+    → `AVAILABLE_NOT_DISPLAYED` (frontend-only work possible later).
+  - `SafeAdmin.createdAt` / `lastLoginAt` exist but are not shown in Settings.
+  - `AdminAuditLog` / `AccessLog` are documented in `01_ARCHITECTURE` and `10_BACKLOG`
+    but have **no admin API client** → `DOCUMENTED_NO_ADMIN_API`.
+  - Rights holder, authority, canonical original URL, publication provenance, work
+    registry, case workspace, evidence export → `BACKEND_REQUIRED` / `NOT_SUPPORTED`
+    (must not be frontend-mocked).
+  - Honesty rules captured: checksum = integrity only (not ownership); `createdAt` ≠
+    work-creation/ownership date; `publishedAt` is admin-entered/unverified.
+- Updated `README.md` to list doc 13 with a one-line description.
+
+### Verified
+
+- `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build` all pass (unchanged
+  from the UX-6 checkpoint); `git diff --check` clean; scoped Prettier on the three
+  touched files (`docs/13...md`, `README.md`, `session-log.md`) passes.
+- `git status --short src` is empty — no source file changed.
+- The prohibited phrases ("verified owner", "proof of ownership", "legal confidence
+  score", "guaranteed approval") appear in the doc only inside the non-goals /
+  prohibition context.
+
+### Pending
+
+- This is a gap analysis only; no backend, API, or UI capability has been implemented.
+- Browser/live-API verification of UX-0 → UX-6 is still pending (no browser tooling).
+- No real automated test suite exists; `yarn test` is still a placeholder `echo`.
+- `../../.prettierignore` (referenced by format scripts) is still missing/external;
+  deferred to UX-8.
+- UX-8 (tests, smoke checklist, documentation, and the framer-motion removal
+  assessment) not started.
+
 ## 2026-07-13 — UX-6 login and settings
 
 Controlled UI/UX upgrade, phase UX-6 (Login + Settings). Presentation, Vietnamese

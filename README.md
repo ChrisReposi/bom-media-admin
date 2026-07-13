@@ -48,7 +48,12 @@ docs/
   10_BACKLOG.md
   11_INCIDENT_RESPONSE.md
   12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
+  13_ADMIN_EVIDENCE_READINESS_GAP_ANALYSIS.md
 ```
+
+`docs/13_ADMIN_EVIDENCE_READINESS_GAP_ANALYSIS.md`: Phân tích dữ liệu hiện có,
+khoảng trống backend/API và lộ trình xây dựng hồ sơ vận hành có provenance và
+auditability.
 
 ## Ghi chú quan trọng
 
