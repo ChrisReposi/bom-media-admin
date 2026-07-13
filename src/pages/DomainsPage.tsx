@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { ConfirmActionDialog } from "@/components/common/ConfirmActionDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AssignDomainModal } from "@/features/domains/components/AssignDomainModal";
@@ -55,22 +56,17 @@ const emptyFilters: DomainFilters = {
 };
 
 const adminInputClass = [
-  "h-10 border shadow-sm transition-colors",
-  "bg-[#EFF4FB] text-[#15253e] placeholder:text-[#15253e]",
-  "border-slate-300 hover:border-slate-400",
-  "focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20",
-  "dark:bg-[#18191A] dark:text-[#f1f1f1] dark:placeholder:text-[#f1f1f1]",
-  "dark:border-[#3A3B3C] dark:hover:border-[#5A5B5C]",
+  "h-10 border border-(--admin-border) bg-(--admin-input-bg) text-(--admin-text-strong)",
+  "placeholder:text-(--admin-text-muted) shadow-sm transition-colors",
+  "hover:border-(--admin-border-strong)",
+  "focus-visible:border-(--admin-primary) focus-visible:ring-2 focus-visible:ring-(--admin-focus-ring)",
 ].join(" ");
 
 const adminSelectClass = [
-  "h-10 w-full rounded-md border px-3 text-sm shadow-sm outline-none transition-colors",
-  "bg-[#EFF4FB] text-[#15253e]",
-  "border-slate-300 hover:border-slate-400",
-  "focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20",
-  "dark:bg-[#18191A] dark:text-[#f1f1f1]",
-  "dark:border-[#3A3B3C] dark:hover:border-[#5A5B5C]",
-  "dark:focus:border-[#60A5FA] dark:focus:ring-[#60A5FA]/25",
+  "h-10 w-full rounded-md border border-(--admin-border) bg-(--admin-input-bg) px-3 text-sm text-(--admin-text-strong)",
+  "shadow-sm outline-none transition-colors",
+  "hover:border-(--admin-border-strong)",
+  "focus:border-(--admin-primary) focus:ring-2 focus:ring-(--admin-focus-ring)",
   "disabled:cursor-not-allowed disabled:opacity-60",
 ].join(" ");
 
@@ -78,6 +74,12 @@ const adminOptionStyle = {
   backgroundColor: "var(--admin-input-bg)",
   color: "var(--admin-text-strong)",
 };
+
+type PendingDomainAction =
+  | { type: "disable-domain"; domain: DomainPoolItem }
+  | { type: "unassign-domain"; domain: DomainPoolItem }
+  | { type: "disable-group"; group: DomainGroup }
+  | null;
 
 export function DomainsPage() {
   const [activeTab, setActiveTab] = useState<DomainsTab>("domains");
@@ -100,6 +102,8 @@ export function DomainsPage() {
   const [assigningDomain, setAssigningDomain] = useState<DomainPoolItem | null>(
     null,
   );
+  const [pendingDomainAction, setPendingDomainAction] =
+    useState<PendingDomainAction>(null);
 
   const activeDomainGroups = useMemo(
     () => domainGroups.filter((group) => group.status === "ACTIVE"),
@@ -163,10 +167,10 @@ export function DomainsPage() {
     try {
       if (editingDomain) {
         await updateDomain(editingDomain.id, payload);
-        toast.success("Domain updated.");
+        toast.success("Đã cập nhật tên miền.");
       } else {
         await createDomain(payload as CreateDomainPayload);
-        toast.success("Domain created.");
+        toast.success("Đã tạo tên miền.");
       }
 
       setDomainModalOpen(false);
@@ -187,10 +191,10 @@ export function DomainsPage() {
     try {
       if (editingGroup) {
         await updateDomainGroup(editingGroup.id, payload);
-        toast.success("Domain group updated.");
+        toast.success("Đã cập nhật nhóm tên miền.");
       } else {
         await createDomainGroup(payload as CreateDomainGroupPayload);
-        toast.success("Domain group created.");
+        toast.success("Đã tạo nhóm tên miền.");
       }
 
       setGroupModalOpen(false);
@@ -213,7 +217,7 @@ export function DomainsPage() {
 
     try {
       await assignDomainToWebsite(assigningDomain.id, payload);
-      toast.success("Domain assigned.");
+      toast.success("Đã gán tên miền.");
       setAssigningDomain(null);
       await fetchDomainData();
     } catch (assignError) {
@@ -223,13 +227,16 @@ export function DomainsPage() {
     }
   }
 
-  async function handleDisableDomain(domain: DomainPoolItem): Promise<void> {
-    if (!window.confirm(`Disable domain "${domain.domain}"?`)) return;
+  function handleDisableDomain(domain: DomainPoolItem): void {
+    setPendingDomainAction({ type: "disable-domain", domain });
+  }
 
+  async function runDisableDomain(domain: DomainPoolItem): Promise<void> {
     setIsSubmitting(true);
     try {
       await disableDomain(domain.id);
-      toast.success("Domain disabled.");
+      toast.success("Đã vô hiệu hóa tên miền.");
+      setPendingDomainAction(null);
       await fetchDomainData();
     } catch (disableError) {
       toast.error(getDomainApiErrorMessage(disableError));
@@ -242,7 +249,7 @@ export function DomainsPage() {
     setIsSubmitting(true);
     try {
       await activateDomain(domain.id);
-      toast.success("Domain activated.");
+      toast.success("Đã kích hoạt tên miền.");
       await fetchDomainData();
     } catch (activateError) {
       toast.error(getDomainApiErrorMessage(activateError));
@@ -251,13 +258,16 @@ export function DomainsPage() {
     }
   }
 
-  async function handleUnassignDomain(domain: DomainPoolItem): Promise<void> {
-    if (!window.confirm(`Unassign domain "${domain.domain}"?`)) return;
+  function handleUnassignDomain(domain: DomainPoolItem): void {
+    setPendingDomainAction({ type: "unassign-domain", domain });
+  }
 
+  async function runUnassignDomain(domain: DomainPoolItem): Promise<void> {
     setIsSubmitting(true);
     try {
       await unassignDomain(domain.id);
-      toast.success("Domain unassigned.");
+      toast.success("Đã gỡ tên miền.");
+      setPendingDomainAction(null);
       await fetchDomainData();
     } catch (unassignError) {
       toast.error(getDomainApiErrorMessage(unassignError));
@@ -266,13 +276,16 @@ export function DomainsPage() {
     }
   }
 
-  async function handleDisableGroup(group: DomainGroup): Promise<void> {
-    if (!window.confirm(`Disable domain group "${group.name}"?`)) return;
+  function handleDisableGroup(group: DomainGroup): void {
+    setPendingDomainAction({ type: "disable-group", group });
+  }
 
+  async function runDisableGroup(group: DomainGroup): Promise<void> {
     setIsSubmitting(true);
     try {
       await disableDomainGroup(group.id);
-      toast.success("Domain group disabled.");
+      toast.success("Đã vô hiệu hóa nhóm tên miền.");
+      setPendingDomainAction(null);
       await fetchDomainData();
     } catch (disableError) {
       toast.error(getDomainApiErrorMessage(disableError));
@@ -281,16 +294,34 @@ export function DomainsPage() {
     }
   }
 
+  async function handleConfirmDomainAction(): Promise<void> {
+    if (!pendingDomainAction) {
+      return;
+    }
+
+    if (pendingDomainAction.type === "disable-domain") {
+      await runDisableDomain(pendingDomainAction.domain);
+      return;
+    }
+
+    if (pendingDomainAction.type === "unassign-domain") {
+      await runUnassignDomain(pendingDomainAction.domain);
+      return;
+    }
+
+    await runDisableGroup(pendingDomainAction.group);
+  }
+
   return (
     <section className="space-y-6">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-(--admin-text-strong)">
-            Domain Management
+            Quản lý tên miền
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-(--admin-text-muted)">
-            Manage the domain pool, classify domains by group, and assign one
-            active domain to each website.
+            Quản lý kho tên miền, phân loại theo nhóm và gán một tên miền đang
+            hoạt động cho mỗi website.
           </p>
         </div>
 
@@ -303,7 +334,7 @@ export function DomainsPage() {
             }}
           >
             <Plus className="size-4" />
-            Add Domain
+            Thêm tên miền
           </Button>
           <Button
             type="button"
@@ -314,7 +345,7 @@ export function DomainsPage() {
             }}
           >
             <Plus className="size-4" />
-            Add Group
+            Thêm nhóm
           </Button>
           <Button
             disabled={isLoading}
@@ -325,25 +356,31 @@ export function DomainsPage() {
             <RefreshCcw
               className={isLoading ? "size-4 animate-spin" : "size-4"}
             />
-            Refresh
+            Tải lại
           </Button>
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-2" role="tablist">
+      <div
+        aria-label="Chế độ xem"
+        className="flex flex-wrap gap-2"
+        role="group"
+      >
         <Button
+          aria-pressed={activeTab === "domains"}
           type="button"
           variant={activeTab === "domains" ? "default" : "outline"}
           onClick={() => setActiveTab("domains")}
         >
-          Domains
+          Tên miền
         </Button>
         <Button
+          aria-pressed={activeTab === "groups"}
           type="button"
           variant={activeTab === "groups" ? "default" : "outline"}
           onClick={() => setActiveTab("groups")}
         >
-          Domain Groups
+          Nhóm tên miền
         </Button>
       </div>
 
@@ -354,7 +391,7 @@ export function DomainsPage() {
             onSubmit={applyFilters}
           >
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Search domain</span>
+              <span className="mb-2 block">Tìm tên miền</span>
               <Input
                 className={adminInputClass}
                 placeholder="127.0.0.1:5500"
@@ -369,7 +406,7 @@ export function DomainsPage() {
             </label>
 
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Usage</span>
+              <span className="mb-2 block">Tình trạng dùng</span>
               <select
                 className={adminSelectClass}
                 value={filters.usageStatus}
@@ -381,22 +418,22 @@ export function DomainsPage() {
                 }
               >
                 <option style={adminOptionStyle} value="">
-                  All
+                  Tất cả
                 </option>
                 <option style={adminOptionStyle} value="AVAILABLE">
-                  Available
+                  Sẵn sàng
                 </option>
                 <option style={adminOptionStyle} value="IN_USE">
-                  In use
+                  Đang sử dụng
                 </option>
                 <option style={adminOptionStyle} value="DISABLED">
-                  Disabled
+                  Đã vô hiệu hóa
                 </option>
               </select>
             </label>
 
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Status</span>
+              <span className="mb-2 block">Trạng thái</span>
               <select
                 className={adminSelectClass}
                 value={filters.status}
@@ -408,19 +445,19 @@ export function DomainsPage() {
                 }
               >
                 <option style={adminOptionStyle} value="">
-                  All
+                  Tất cả
                 </option>
                 <option style={adminOptionStyle} value="ACTIVE">
-                  ACTIVE
+                  Đang hoạt động
                 </option>
                 <option style={adminOptionStyle} value="DISABLED">
-                  DISABLED
+                  Đã vô hiệu hóa
                 </option>
               </select>
             </label>
 
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Group</span>
+              <span className="mb-2 block">Nhóm</span>
               <select
                 className={adminSelectClass}
                 value={filters.domainGroupKey}
@@ -432,7 +469,7 @@ export function DomainsPage() {
                 }
               >
                 <option style={adminOptionStyle} value="">
-                  All groups
+                  Tất cả nhóm
                 </option>
 
                 {domainGroups.map((group) => (
@@ -450,7 +487,7 @@ export function DomainsPage() {
             <div className="flex items-end gap-2">
               <Button disabled={isLoading} type="submit">
                 <Search className="size-4" />
-                Search
+                Tìm kiếm
               </Button>
               <Button
                 disabled={isLoading}
@@ -458,13 +495,13 @@ export function DomainsPage() {
                 variant="outline"
                 onClick={clearFilters}
               >
-                Clear
+                Xóa bộ lọc
               </Button>
             </div>
           </form>
 
           <div className="text-sm text-(--admin-text-muted)">
-            Total: {meta?.total ?? domains.length} domains
+            Tổng cộng: {meta?.total ?? domains.length} tên miền
           </div>
 
           {error ? (
@@ -476,11 +513,11 @@ export function DomainsPage() {
           <div className="space-y-3">
             {isLoading ? (
               <div className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-6 text-sm text-(--admin-text-muted)">
-                Loading domains...
+                Đang tải tên miền…
               </div>
             ) : domains.length === 0 ? (
               <div className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-6 text-sm text-(--admin-text-muted)">
-                No domains match the current filters.
+                Không có tên miền khớp bộ lọc hiện tại.
               </div>
             ) : (
               domains.map((domain) => (
@@ -511,11 +548,11 @@ export function DomainsPage() {
         <div className="space-y-3">
           {isLoading ? (
             <div className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-6 text-sm text-(--admin-text-muted)">
-              Loading domain groups...
+              Đang tải nhóm tên miền…
             </div>
           ) : domainGroups.length === 0 ? (
             <div className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-6 text-sm text-(--admin-text-muted)">
-              No domain groups yet.
+              Chưa có nhóm tên miền nào.
             </div>
           ) : (
             domainGroups.map((group) => (
@@ -564,6 +601,52 @@ export function DomainsPage() {
         websites={websites}
         onClose={() => setAssigningDomain(null)}
         onSubmit={handleAssign}
+      />
+
+      <ConfirmActionDialog
+        confirmLabel={
+          pendingDomainAction?.type === "unassign-domain"
+            ? "Gỡ tên miền"
+            : "Vô hiệu hóa"
+        }
+        description={
+          pendingDomainAction?.type === "disable-domain" ? (
+            <>
+              Tên miền <strong>{pendingDomainAction.domain.domain}</strong> sẽ
+              chuyển sang trạng thái đã vô hiệu hóa. Đây không phải thao tác
+              xóa: bản ghi tên miền vẫn còn trong kho tên miền. Tên miền đã vô
+              hiệu hóa không còn được xem là truy cập công khai được.
+            </>
+          ) : pendingDomainAction?.type === "unassign-domain" ? (
+            <>
+              Tên miền <strong>{pendingDomainAction.domain.domain}</strong> sẽ
+              được gỡ khỏi website đang gán. Bản ghi tên miền vẫn còn trong kho
+              tên miền và không bị xóa. Máy chủ vẫn là nơi quyết định.
+            </>
+          ) : pendingDomainAction?.type === "disable-group" ? (
+            <>
+              Nhóm tên miền <strong>{pendingDomainAction.group.name}</strong> sẽ
+              chuyển sang trạng thái vô hiệu hóa. Thao tác này không tự động
+              được mô tả là xóa hoặc vô hiệu hóa từng tên miền thành viên.
+            </>
+          ) : null
+        }
+        isSubmitting={isSubmitting}
+        open={pendingDomainAction !== null}
+        title={
+          pendingDomainAction?.type === "disable-group"
+            ? "Vô hiệu hóa nhóm tên miền?"
+            : pendingDomainAction?.type === "unassign-domain"
+              ? "Gỡ tên miền khỏi website?"
+              : "Vô hiệu hóa tên miền?"
+        }
+        variant="warning"
+        onConfirm={handleConfirmDomainAction}
+        onOpenChange={(next) => {
+          if (!next) {
+            setPendingDomainAction(null);
+          }
+        }}
       />
     </section>
   );

@@ -2,6 +2,69 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-13 — UX-2 website and domain confirmations
+
+Controlled UI/UX upgrade, phase UX-2 (Websites/Domains destructive confirmations,
+Vietnamese copy, token cleanup). All API endpoints, payloads, data loading and
+refetch behavior are unchanged; no pagination added; no data-fetching refactor.
+
+### Changed
+
+- Added `src/components/common/ConfirmActionDialog.tsx`: one shared, accessible
+  confirmation dialog on the existing `radix-ui` Dialog (focus trap, Escape, focus
+  restore, scroll lock). Presentation only — no website/domain logic. Features:
+  linked title/description, `default|warning|destructive` variants (icon is not the
+  only signal — title + confirm-button colour + copy also convey it), submitting
+  disabled state + spinner, a `confirmLockRef` so `onConfirm` cannot fire twice, and
+  it refuses to close on Escape/backdrop/Close while `isSubmitting`. Uses
+  `--admin-overlay` for the backdrop and `--admin-motion-fast`; respects reduced motion.
+  Responsive (`w-[calc(100vw-2rem)] max-w-md`, `max-h`+scroll, actions stack on mobile).
+- `WebsitesPage.tsx`: replaced both `window.confirm()` calls (disable website,
+  unassign domain) with `ConfirmActionDialog` driven by a `PendingWebsiteAction`
+  discriminated union. `disableWebsite(id)` and `unassignDomain(domainId)` calls,
+  their toasts, `fetchWebsites()`/`fetchAvailableDomains()` refetches and the selected
+  website reconciliation are preserved. Vietnamese copy for all user-visible strings
+  (toasts, toolbar, filters, list header). Dialog copy states disable ≠ permanent
+  delete and that disabled = not public-resolvable; unassign copy says the domain
+  record is not deleted and the backend decides.
+- `DomainsPage.tsx`: replaced all three `window.confirm()` calls (disable domain,
+  unassign domain, disable group) with `ConfirmActionDialog` driven by a
+  `PendingDomainAction` union. `disableDomain`, `unassignDomain`, `disableDomainGroup`
+  calls, toasts and `fetchDomainData()` refetch preserved. Removed page-level hardcoded
+  hex classes (`#EFF4FB`, `#15253e`, `#18191A`, `#f1f1f1`, `#3A3B3C`, `#5A5B5C`) from
+  the input/select helpers, replaced with `--admin-*` tokens (native `<select>` stays
+  readable in light/dark; option colours already used tokens). The Domains/Groups
+  toggle changed from an invalid `role="tablist"`-with-buttons to a valid
+  `role="group"` + `aria-pressed` toggle-button group (behaviour unchanged). Vietnamese
+  copy throughout; the disable-group copy uses the required non-inferring wording.
+
+### Verified
+
+- `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build` all pass;
+  `git diff --check` clean; scoped Prettier check on the edited files passes.
+- `grep window.confirm` returns nothing in either page; no 6-digit hex remains in
+  either page.
+- API/payload/refetch preserved: confirmed by diff that the only behavioural change is
+  the confirm gate moving from `window.confirm` into a controlled dialog; the API call
+  arguments, toasts and refetch calls per action are identical to before.
+- Bundle: the eager main chunk is essentially flat (index 397.98 → 398.07 kB raw,
+  126.95 → 127.03 kB gzip) because ConfirmActionDialog reuses the already-bundled Radix
+  Dialog. The lazy Websites/Domains chunks grew modestly (~+1.3–1.8 kB raw each).
+- NOT browser-verified: no browser tooling is configured. The 10 interaction checks
+  (disable/cancel/error-keeps-dialog/unassign/disable-group/Escape+focus-restore/
+  double-click/mobile dialog) were reasoned about statically but not exercised.
+
+### Pending
+
+- Browser verification of all five confirmation flows, Escape + focus restore,
+  double-click safety, API-error-keeps-dialog, and the mobile dialog is still pending
+  (no browser tooling installed; not installing without approval).
+- Pagination NOT implemented: Websites/Domains/Groups still fetch `page: 1, limit: 100`;
+  this is not production-ready pagination and API params are unchanged.
+- `../../.prettierignore` (referenced by format scripts) is still missing/external;
+  deferred to UX-8.
+- UX-3 (Videos list) not started.
+
 ## 2026-07-13 — UX-1 app shell and route states
 
 Controlled UI/UX upgrade, phase UX-1 (app shell, route/auth states, 404). Presentation,

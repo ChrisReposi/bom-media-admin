@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { ConfirmActionDialog } from "@/components/common/ConfirmActionDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClaimCurrentDomainModal } from "@/features/websites/components/ClaimCurrentDomainModal";
@@ -46,6 +47,11 @@ const emptyFilters: WebsiteFilters = {
   domainGroupKey: "",
 };
 
+type PendingWebsiteAction =
+  | { type: "disable-website"; website: Website }
+  | { type: "unassign-domain"; domainId: string }
+  | null;
+
 export function WebsitesPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [domainGroups, setDomainGroups] = useState<DomainGroup[]>([]);
@@ -68,6 +74,9 @@ export function WebsitesPage() {
   const [filters, setFilters] = useState<WebsiteFilters>(emptyFilters);
   const [appliedFilters, setAppliedFilters] =
     useState<WebsiteFilters>(emptyFilters);
+  const [pendingWebsiteAction, setPendingWebsiteAction] =
+    useState<PendingWebsiteAction>(null);
+  const [isDisablingWebsite, setIsDisablingWebsite] = useState(false);
 
   const selectedWebsite = useMemo(
     () => websites.find((website) => website.id === selectedWebsiteId) ?? null,
@@ -183,11 +192,11 @@ export function WebsitesPage() {
     try {
       if (editingWebsite) {
         await updateWebsite(editingWebsite.id, payload);
-        toast.success("Da cap nhat website.");
+        toast.success("Đã cập nhật website.");
       } else {
         const website = await createWebsite(payload as CreateWebsitePayload);
         setSelectedWebsiteId(website.id);
-        toast.success("Da tao website.");
+        toast.success("Đã tạo website.");
       }
 
       setIsWebsiteModalOpen(false);
@@ -200,17 +209,22 @@ export function WebsitesPage() {
     }
   }
 
-  async function handleDisableWebsite(website: Website): Promise<void> {
-    if (!window.confirm(`Disable website "${website.name}"?`)) {
-      return;
-    }
+  function handleDisableWebsite(website: Website): void {
+    setPendingWebsiteAction({ type: "disable-website", website });
+  }
+
+  async function runDisableWebsite(website: Website): Promise<void> {
+    setIsDisablingWebsite(true);
 
     try {
       await disableWebsite(website.id);
-      toast.success("Da disable website.");
+      toast.success("Đã vô hiệu hóa website.");
+      setPendingWebsiteAction(null);
       await fetchWebsites();
     } catch (disableError) {
       toast.error(getWebsiteApiErrorMessage(disableError));
+    } finally {
+      setIsDisablingWebsite(false);
     }
   }
 
@@ -220,7 +234,7 @@ export function WebsitesPage() {
         status: "ACTIVE",
       } as UpdateWebsitePayload);
 
-      toast.success("Da active website.");
+      toast.success("Đã kích hoạt website.");
       await fetchWebsites();
     } catch (activateError) {
       toast.error(getWebsiteApiErrorMessage(activateError));
@@ -232,7 +246,7 @@ export function WebsitesPage() {
     replaceExisting: boolean;
   }): Promise<void> {
     if (!selectedWebsite) {
-      toast.error("Vui long chon website.");
+      toast.error("Vui lòng chọn website.");
       return;
     }
 
@@ -243,7 +257,7 @@ export function WebsitesPage() {
         websiteId: selectedWebsite.id,
         replaceExisting: payload.replaceExisting,
       });
-      toast.success("Da gan domain.");
+      toast.success("Đã gán tên miền.");
       await fetchWebsites();
       await fetchAvailableDomains();
     } catch (domainError) {
@@ -258,7 +272,11 @@ export function WebsitesPage() {
       return;
     }
 
-    if (!window.confirm("Unassign domain nay?")) {
+    setPendingWebsiteAction({ type: "unassign-domain", domainId });
+  }
+
+  async function runUnassignDomain(domainId: string): Promise<void> {
+    if (!selectedWebsite) {
       return;
     }
 
@@ -266,7 +284,8 @@ export function WebsitesPage() {
 
     try {
       await unassignDomain(domainId);
-      toast.success("Da go gan domain.");
+      toast.success("Đã gỡ tên miền.");
+      setPendingWebsiteAction(null);
       await fetchWebsites();
       await fetchAvailableDomains();
     } catch (domainError) {
@@ -274,6 +293,19 @@ export function WebsitesPage() {
     } finally {
       setIsSubmittingDomain(false);
     }
+  }
+
+  async function handleConfirmWebsiteAction(): Promise<void> {
+    if (!pendingWebsiteAction) {
+      return;
+    }
+
+    if (pendingWebsiteAction.type === "disable-website") {
+      await runDisableWebsite(pendingWebsiteAction.website);
+      return;
+    }
+
+    await runUnassignDomain(pendingWebsiteAction.domainId);
   }
 
   async function handleClaimCurrentDomain(payload: {
@@ -290,7 +322,7 @@ export function WebsitesPage() {
       });
       setSelectedWebsiteId(payload.websiteId);
       setIsClaimModalOpen(false);
-      toast.success("Da claim current domain.");
+      toast.success("Đã nhận tên miền hiện tại cho website.");
       await fetchWebsites();
       await fetchAvailableDomains();
     } catch (claimError) {
@@ -310,7 +342,7 @@ export function WebsitesPage() {
           onClick={() => setIsClaimModalOpen(true)}
         >
           <Globe2 className="size-4" />
-          Claim current domain
+          Nhận tên miền hiện tại
         </Button>
         <Button
           disabled={isLoading}
@@ -321,7 +353,7 @@ export function WebsitesPage() {
           <RefreshCcw
             className={isLoading ? "size-4 animate-spin" : "size-4"}
           />
-          Tai lai
+          Tải lại
         </Button>
       </div>
 
@@ -330,10 +362,10 @@ export function WebsitesPage() {
         onSubmit={applyFilters}
       >
         <label className="block text-sm font-medium text-(--admin-text-strong)">
-          <span className="mb-2 block">Search</span>
+          <span className="mb-2 block">Tìm kiếm</span>
           <Input
             className="h-10 border-(--admin-border) bg-(--admin-input-bg) text-(--admin-text-strong)"
-            placeholder="Name, slug, domain, or group"
+            placeholder="Tên, slug, tên miền hoặc nhóm"
             value={filters.search}
             onChange={(event) =>
               setFilters((currentFilters) => ({
@@ -345,7 +377,7 @@ export function WebsitesPage() {
         </label>
 
         <label className="block text-sm font-medium text-(--admin-text-strong)">
-          <span className="mb-2 block">Domain</span>
+          <span className="mb-2 block">Tên miền</span>
           <Input
             className="h-10 border-(--admin-border) bg-(--admin-input-bg) text-(--admin-text-strong)"
             placeholder="example.com"
@@ -360,10 +392,10 @@ export function WebsitesPage() {
         </label>
 
         <label className="block text-sm font-medium text-(--admin-text-strong)">
-          <span className="mb-2 block">Group key</span>
+          <span className="mb-2 block">Khóa nhóm</span>
           <Input
             className="h-10 border-(--admin-border) bg-(--admin-input-bg) text-(--admin-text-strong)"
-            placeholder="Tìm domain theo tên vd: SML"
+            placeholder="Tìm nhóm tên miền, vd: SML"
             value={filters.domainGroupKey}
             onChange={(event) =>
               setFilters((currentFilters) => ({
@@ -383,7 +415,7 @@ export function WebsitesPage() {
         <div className="flex items-end gap-2">
           <Button disabled={isLoading} type="submit">
             <Search className="size-4" />
-            Search
+            Tìm kiếm
           </Button>
           <Button
             disabled={isLoading}
@@ -391,7 +423,7 @@ export function WebsitesPage() {
             variant="outline"
             onClick={clearFilters}
           >
-            Clear
+            Xóa bộ lọc
           </Button>
         </div>
       </form>
@@ -407,16 +439,16 @@ export function WebsitesPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-(--admin-text-strong)">
-                Danh sach websites
+                Danh sách website
               </h2>
               <span className="text-sm text-(--admin-text-muted)">
-                Tong cong: {meta?.total ?? websites.length} websites
+                Tổng cộng: {meta?.total ?? websites.length} website
               </span>
             </div>
 
             <Button type="button" onClick={openCreateModal}>
               <Plus className="size-4" />
-              Them Website
+              Thêm website
             </Button>
           </div>
 
@@ -481,6 +513,48 @@ export function WebsitesPage() {
         websites={websites}
         onClose={() => setIsClaimModalOpen(false)}
         onSubmit={handleClaimCurrentDomain}
+      />
+
+      <ConfirmActionDialog
+        confirmLabel={
+          pendingWebsiteAction?.type === "disable-website"
+            ? "Vô hiệu hóa"
+            : "Gỡ tên miền"
+        }
+        description={
+          pendingWebsiteAction?.type === "disable-website" ? (
+            <>
+              Website sẽ chuyển sang trạng thái đã vô hiệu hóa. Website và tên
+              miền đã vô hiệu hóa không còn được xem là truy cập công khai được.
+              Đây không phải thao tác xóa dữ liệu vĩnh viễn; máy chủ vẫn là nơi
+              quyết định cuối cùng.
+            </>
+          ) : (
+            <>
+              Tên miền sẽ được gỡ khỏi website. Các liên kết công khai phụ thuộc
+              tên miền này có thể không còn truy cập theo tên miền cũ. Bản ghi
+              tên miền không bị xóa và máy chủ vẫn là nơi quyết định.
+            </>
+          )
+        }
+        isSubmitting={
+          pendingWebsiteAction?.type === "unassign-domain"
+            ? isSubmittingDomain
+            : isDisablingWebsite
+        }
+        open={pendingWebsiteAction !== null}
+        title={
+          pendingWebsiteAction?.type === "disable-website"
+            ? "Vô hiệu hóa website?"
+            : "Gỡ tên miền khỏi website?"
+        }
+        variant="warning"
+        onConfirm={handleConfirmWebsiteAction}
+        onOpenChange={(next) => {
+          if (!next) {
+            setPendingWebsiteAction(null);
+          }
+        }}
       />
     </section>
   );
