@@ -2,6 +2,79 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-13 — UX-5 dashboard share workflow
+
+Controlled UI/UX upgrade, phase UX-5 (Dashboard + Share Link Composer). Presentation,
+Vietnamese copy, accessibility, two genuine bug fixes. No cache/data-fetching
+architecture, API params, share-link payload, clipboard behaviour or token handling
+changed. No new dependency; no new component file.
+
+### Fixed (real bugs)
+
+- `DashboardPage.tsx` `loadWebsites()`: the success branch returned `false`, so
+  `handleRefresh()` always showed "Không thể tải lại đầy đủ dữ liệu Dashboard." even when
+  the websites load succeeded. Changed the success branch to `return true` (one line;
+  cache/fetcher/API params/selected-website reconciliation/error handling/`finally`
+  untouched).
+- `ReadyVideoPicker.tsx` `getEmptyStateText()`: the filter-key empty message was stored as
+  double-encoded UTF-8 mojibake (`KhÃ´ng cÃ³ video...`), rendering garbled text. Replaced
+  with the correct Vietnamese `Không có video nào khớp với key "…"` (targeted single-string
+  replacement; no other bytes touched).
+
+### Changed
+
+- `DashboardPage.tsx`: header `<h1>` "Tổng quan" + description; refresh button unchanged
+  (still `handleRefresh`, disabled while refreshing, keeps content on screen).
+- `ShareLinkComposer.tsx`: added "Bước 1/2/3" eyebrows above the website/video/settings
+  sections; Vietnamese form labels (Nhãn / Giới hạn lượt xem / Thời hạn) and placeholder;
+  section title "Thiết lập share link"; added a neutral note ("Thời hạn và giới hạn lượt
+  xem giúp kiểm soát quyền truy cập. Đây không phải cơ chế DRM và không đảm bảo link không
+  thể bị sao chép."); combined submit-disabled hint for missing website/video; made the
+  settings+result row stack on mobile (`flex-col lg:flex-row`, removed `min-w-[50%]`).
+  Field names, validation, payload builders (`parsePositiveInteger`/`dateTimeLocalToIso`),
+  default values and `onSubmit` shape are unchanged.
+- `WebsiteQuickSelect.tsx`: selection is no longer colour-only — added a filled/empty check
+  marker and `aria-pressed`; added a focus ring and `preventDefault` on Space/Enter; the
+  no-active-domain state now clearly says "Chưa có domain active — chưa thể tạo URL public".
+- `ReadyVideoPicker.tsx`: source-filter labels Vietnamized (Tất cả / Video link / Video
+  server / Video nhúng / Video DB); the invalid `role="tablist"`-with-`aria-pressed`-buttons
+  container changed to a valid `role="group"` toggle group; search-error box got
+  `role="alert"` and higher-contrast text (`--admin-text-strong` on `--admin-danger-soft`).
+  Thumbnail lifecycle / IntersectionObserver / concurrency / object-URL lease untouched.
+- `CreatedShareLinkCard.tsx`: copy button "Sao chép URL" + disabled when no public URL;
+  readonly URL input got an `aria-label`; card stacks full-width on mobile. The
+  raw-token-only-shown-once note and the "not persisted in Admin Web" note are kept; nothing
+  is persisted or logged.
+
+### Verified
+
+- `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build` all pass;
+  `git diff --check` clean; scoped Prettier on all UX-5 files passes.
+- Security grep returns nothing for `localStorage` / `sessionStorage` / `console.log` /
+  `console.debug` across the five dashboard files — no new persistence or logging of the
+  share URL/token. `createdShareLink` still lives only in component state.
+- Confirmed `loadWebsites()` success branch now returns `true`, and dashboard invariants are
+  present/unchanged (PAGE_SIZE 24, debounce 400, min 2, max 80, `dedupeRequests: false`,
+  `videoDatasetVersionRef`, `isShareableVideo`).
+- Bundle: DashboardPage lazy chunk 26.36 → 28.12 kB raw (gzip 7.89 → 8.31); eager main chunk
+  flat (398.09 kB).
+- NOT browser-verified: no browser tooling is configured. The 20 dashboard checks (initial
+  load, refresh success toast now correct, load failures, search/filter/load-more, selected
+  IDs preserved across filter changes, hidden-selected counted, submit gating, create +
+  clipboard, no-active-domain, mobile/dark, LOCAL_FILE thumbnails, no token in console) were
+  reasoned about statically but not exercised.
+
+### Pending
+
+- Browser verification of the full dashboard workflow (20 checks above), especially the
+  corrected refresh success toast, selected-IDs-preserved-across-filter, and clipboard, is
+  still pending (no browser tooling installed).
+- No real automated test suite exists; `yarn test` is still a placeholder `echo`.
+- `../../.prettierignore` (referenced by format scripts) is still missing/external; deferred
+  to UX-8.
+- Share-link history / revoke UI remains a separate backend + UI backlog item (not in UX-5).
+- UX-6 (Login + Settings) not started.
+
 ## 2026-07-13 — UX-4 video detail
 
 Controlled UI/UX upgrade, phase UX-4 (`/videos/:videoId`). Presentation, Vietnamese

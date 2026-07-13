@@ -1,4 +1,4 @@
-import { Globe2 } from "lucide-react";
+import { Check } from "lucide-react";
 
 import type { Website } from "@/features/websites/websiteTypes";
 
@@ -47,8 +47,9 @@ export function WebsiteQuickSelect({
         return (
           <div
             key={website.id}
+            aria-pressed={isSelected}
             className={[
-              "rounded-lg border py-2 px-4 text-left transition cursor-pointer select-none",
+              "flex items-start gap-3 rounded-lg border py-2 px-4 text-left transition cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--admin-focus-ring)",
               isSelected
                 ? "border-(--admin-primary) bg-(--admin-primary-soft)"
                 : "border-(--admin-border) bg-(--admin-surface-alt) hover:border-(--admin-border-strong)",
@@ -58,10 +59,23 @@ export function WebsiteQuickSelect({
             onClick={() => onChange(website.id)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
                 onChange(website.id);
               }
             }}
           >
+            <span
+              aria-hidden="true"
+              className={[
+                "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+                isSelected
+                  ? "border-(--admin-primary) bg-(--admin-primary) text-(--admin-contrast)"
+                  : "border-(--admin-border-strong) text-transparent",
+              ].join(" ")}
+            >
+              <Check className="size-3.5" />
+            </span>
+
             <span className="min-w-0 flex-1">
               <span className="block truncate font-semibold text-(--admin-text-strong)">
                 {website.name}
@@ -83,7 +97,7 @@ export function WebsiteQuickSelect({
                   </a>
                 ) : (
                   <span className="text-(--admin-text-muted)">
-                    Chưa ghép domain
+                    Chưa có domain active — chưa thể tạo URL public
                   </span>
                 )}
               </span>

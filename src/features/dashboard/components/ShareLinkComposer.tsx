@@ -136,13 +136,16 @@ export function ShareLinkComposer({
         <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm xl:col-span-1">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-(--admin-text-muted)">
+                Bước 1
+              </p>
               <h2 className="text-lg font-semibold text-(--admin-text-strong)">
                 Chọn website
               </h2>
               <p className="text-left text-sm text-(--admin-text-muted)">
                 {websiteSearchQuery
-                  ? `${filteredWebsiteCount}/${totalWebsiteCount} websites`
-                  : `${totalWebsiteCount} websites`}
+                  ? `${filteredWebsiteCount}/${totalWebsiteCount} website`
+                  : `${totalWebsiteCount} website`}
               </p>
             </div>
 
@@ -187,11 +190,14 @@ export function ShareLinkComposer({
         <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm xl:col-span-2">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex flex-col gap-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-(--admin-text-muted)">
+                Bước 2
+              </p>
               <h2 className="text-lg font-semibold text-(--admin-text-strong)">
                 Chọn video
               </h2>
               <p className="text-left text-sm text-(--admin-text-muted)">
-                {videos.length}/{totalVideos} videos
+                {videos.length}/{totalVideos} video
               </p>
             </div>
 
@@ -268,44 +274,50 @@ export function ShareLinkComposer({
         </section>
       </div>
 
-      <div className="flex flex-row items-start gap-4">
-        <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm min-w-[50%]">
-          <div className="flex flex-row items-start justify-between mb-4">
-            <div className="mb-4 flex items-center gap-2">
-              <Link2 className="size-4 text-(--admin-primary)" />
-              <h2 className="text-lg font-semibold text-(--admin-text-strong)">
-                Tùy chọn share link
-              </h2>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <section className="w-full rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm lg:flex-1">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-(--admin-text-muted)">
+                Bước 3
+              </p>
+              <div className="flex items-center gap-2">
+                <Link2 className="size-4 text-(--admin-primary)" />
+                <h2 className="text-lg font-semibold text-(--admin-text-strong)">
+                  Thiết lập share link
+                </h2>
+              </div>
             </div>
 
-            <Button className="" disabled={!canSubmit} type="submit">
+            <Button disabled={!canSubmit} type="submit">
               {isSubmitting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Link2 className="size-4" />
               )}
-              Tạo share link
+              {isSubmitting ? "Đang tạo..." : "Tạo share link"}
             </Button>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Label</span>
+              <span className="mb-2 block">Nhãn</span>
               <Input
                 id="labelInput"
                 className={adminInputClass}
-                placeholder="Send to customer A"
+                placeholder="Ví dụ: Gửi cho khách hàng A"
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
               />
             </label>
 
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Max views</span>
+              <span className="mb-2 block">Giới hạn lượt xem</span>
               <Input
                 id="maxViewsInput"
                 className={adminInputClass}
                 min={1}
+                placeholder="Không giới hạn"
                 type="number"
                 value={maxViews}
                 onChange={(event) => setMaxViews(event.target.value)}
@@ -313,7 +325,7 @@ export function ShareLinkComposer({
             </label>
 
             <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Expires at</span>
+              <span className="mb-2 block">Thời hạn</span>
               <Input
                 id="expiresAtInput"
                 className={adminInputClass}
@@ -324,9 +336,16 @@ export function ShareLinkComposer({
             </label>
           </div>
 
-          {selectedVideoCount === 0 ? (
+          <p className="mt-3 text-xs leading-5 text-(--admin-text-muted)">
+            Thời hạn và giới hạn lượt xem giúp kiểm soát quyền truy cập. Đây
+            không phải cơ chế DRM và không đảm bảo link không thể bị sao chép.
+          </p>
+
+          {!canSubmit && !isSubmitting ? (
             <p className="mt-3 text-sm text-(--admin-text-muted)">
-              Vui lòng chọn ít nhất một video để tạo share link.
+              {!selectedWebsiteId
+                ? "Chọn một website và ít nhất một video để tạo share link."
+                : "Chọn ít nhất một video để tạo share link."}
             </p>
           ) : null}
         </section>

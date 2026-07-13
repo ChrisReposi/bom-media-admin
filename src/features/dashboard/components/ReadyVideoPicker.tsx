@@ -96,24 +96,24 @@ export function ReadyVideoPicker({
     [shareableVideos, sourceFilter],
   );
   const filterTabs: FilterTab[] = [
-    { value: "all", label: "All", count: shareableVideos.length },
-    { value: "link", label: "Link video", count: linkVideos.length },
+    { value: "all", label: "Tất cả", count: shareableVideos.length },
+    { value: "link", label: "Video link", count: linkVideos.length },
     {
       value: "local-file",
-      label: "Server video",
+      label: "Video server",
       count: localFileVideos.length,
     },
-    { value: "embed", label: "Embed video", count: embedVideos.length },
-    { value: "db-blob", label: "DB video", count: databaseVideos.length },
+    { value: "embed", label: "Video nhúng", count: embedVideos.length },
+    { value: "db-blob", label: "Video DB", count: databaseVideos.length },
   ];
 
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div
-          aria-label="Filter videos by source"
+          aria-label="Lọc video theo nguồn"
           className="flex flex-wrap gap-2"
-          role="tablist"
+          role="group"
         >
           {filterTabs.map((tab) => {
             const isActive = sourceFilter === tab.value;
@@ -153,7 +153,10 @@ export function ReadyVideoPicker({
         ) : null}
 
         {searchStatus === "error" && searchError ? (
-          <div className="mb-3 flex flex-col gap-3 rounded-lg border border-(--admin-danger-soft) bg-(--admin-danger-soft) p-3 text-sm text-(--admin-danger) sm:flex-row sm:items-center sm:justify-between">
+          <div
+            className="mb-3 flex flex-col gap-3 rounded-lg border border-(--admin-danger) bg-(--admin-danger-soft) p-3 text-sm text-(--admin-text-strong) sm:flex-row sm:items-center sm:justify-between"
+            role="alert"
+          >
             <span>{searchError}</span>
             {onRetrySearch ? (
               <Button
@@ -464,7 +467,7 @@ function getEmptyStateText(params: {
   sourceFilter: VideoSourceFilter;
 }): string {
   if (params.filterKey && params.titleFilteredCount === 0) {
-    return `KhÃ´ng cÃ³ video nÃ o khá»›p vá»›i key "${params.filterKey}".`;
+    return `Không có video nào khớp với key "${params.filterKey}".`;
   }
 
   if (params.searchQuery && params.titleFilteredCount === 0) {

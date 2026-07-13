@@ -481,10 +481,15 @@ export function DashboardPage() {
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <h1 className="text-2xl font-semibold text-(--admin-text-strong)">
-          Dashboard
-        </h1>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold text-(--admin-text-strong)">
+            Tổng quan
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-(--admin-text-muted)">
+            Tạo và quản lý quyền truy cập chia sẻ video qua share link.
+          </p>
+        </div>
         <Button
           type="button"
           variant="outline"
