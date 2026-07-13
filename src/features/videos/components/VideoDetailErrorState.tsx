@@ -14,7 +14,10 @@ export function VideoDetailErrorState({
   onRetry,
 }: VideoDetailErrorStateProps) {
   return (
-    <section className="flex min-h-[420px] items-center justify-center rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] p-6 text-center">
+    <section
+      className="flex min-h-[420px] items-center justify-center rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] p-6 text-center"
+      role="alert"
+    >
       <div className="max-w-md">
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]">
           <TriangleAlert className="size-6" />

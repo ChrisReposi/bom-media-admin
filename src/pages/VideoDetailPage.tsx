@@ -41,7 +41,7 @@ const LazyEditVideoModal = lazy(() =>
 );
 
 const statusLabels: Record<VideoStatus, string> = {
-  DISABLED: "Đã tắt",
+  DISABLED: "Đã vô hiệu hóa",
   DRAFT: "Nháp",
   FAILED: "Lỗi",
   PROCESSING: "Đang xử lý",
@@ -146,15 +146,18 @@ export function VideoDetailPage() {
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-row gap-4 sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3 mb-5">
-          <Button type="button" variant="outline" onClick={goBack}>
-            <ArrowLeft className="size-4" />
-            Videos
-          </Button>
-          <h1 className="truncate text-2xl font-semibold text-(--admin-text-strong)">
-            Video Detail
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <Button type="button" variant="outline" onClick={goBack}>
+          <ArrowLeft className="size-4" />
+          Danh sách video
+        </Button>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold text-(--admin-text-strong)">
+            Chi tiết video
           </h1>
+          <p className="truncate text-xs text-(--admin-text-muted)">
+            ID: {video.id}
+          </p>
         </div>
       </div>
 
@@ -167,16 +170,14 @@ export function VideoDetailPage() {
               <h2 className="min-w-0 flex-1 text-2xl font-semibold leading-tight text-(--admin-text-strong)">
                 {video.title}
               </h2>
-              {video.status !== "READY" ? (
-                <span
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-xs font-semibold",
-                    getStatusClass(video.status),
-                  )}
-                >
-                  {statusLabels[video.status]}
-                </span>
-              ) : null}
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold",
+                  getStatusClass(video.status),
+                )}
+              >
+                {statusLabels[video.status]}
+              </span>
             </div>
             <p className="text-sm text-(--admin-text)">
               {viewsText} · {publishedText}
@@ -196,22 +197,24 @@ export function VideoDetailPage() {
             <div className="space-y-2">
               <div>
                 <h2 className="text-lg font-semibold text-[var(--admin-text-strong)]">
-                  Danger Zone
+                  Khu vực nguy hiểm
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-[var(--admin-text)]">
-                  Vô hiệu hoá video chỉ đổi trạng thái và giữ metadata/file.
-                  Purge vĩnh viễn sẽ xoá metadata video và cố gắng xoá file
-                  video/thumbnail thuộc video này khỏi server storage. Không thể
-                  hoàn tác nếu không restore backup.
+                  Vô hiệu hóa video chỉ đổi trạng thái và giữ nguyên
+                  metadata/file. Purge vĩnh viễn sẽ xóa metadata video và cố
+                  gắng xóa file video/thumbnail thuộc video này khỏi server
+                  storage. Không thể hoàn tác nếu không khôi phục từ backup. Máy
+                  chủ có thể từ chối purge nếu video còn được gán website hoặc
+                  share link.
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2 text-xs text-[var(--admin-text-muted)]">
                 <span className="rounded-full border border-[var(--admin-border)] px-2.5 py-1">
-                  Disable = giữ file
+                  Vô hiệu hóa = giữ file
                 </span>
                 <span className="rounded-full border border-[var(--admin-border)] px-2.5 py-1">
-                  Purge = xoá metadata và reclaim storage
+                  Purge = xóa metadata và thu hồi dung lượng
                 </span>
               </div>
             </div>
@@ -225,7 +228,7 @@ export function VideoDetailPage() {
               onClick={() => setIsPurgeConfirmOpen(true)}
             >
               <Trash2 className="size-4" />
-              Xoá vĩnh viễn
+              Xóa vĩnh viễn
             </Button>
           ) : null}
         </div>
@@ -260,20 +263,25 @@ export function VideoDetailPage() {
             </div>
 
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-              <label className="space-y-2">
+              <label className="space-y-2" htmlFor="purge-video-id">
                 <span className="text-sm font-medium text-[var(--admin-text-strong)]">
                   Video ID
                 </span>
                 <Input
+                  aria-describedby="purge-video-id-hint"
                   autoComplete="off"
                   disabled={isPurging}
+                  id="purge-video-id"
                   placeholder={video.id}
                   value={purgeConfirmation}
                   onChange={(event) => setPurgeConfirmation(event.target.value)}
                 />
               </label>
 
-              <div className="rounded-md bg-[var(--admin-surface)] px-3 py-2 text-xs text-[var(--admin-text-muted)]">
+              <div
+                className="rounded-md bg-[var(--admin-surface)] px-3 py-2 text-xs text-[var(--admin-text-muted)]"
+                id="purge-video-id-hint"
+              >
                 <span className="font-semibold text-[var(--admin-text)]">
                   Phải khớp:
                 </span>{" "}
@@ -290,7 +298,7 @@ export function VideoDetailPage() {
                 onChange={(event) => setPurgeUnderstood(event.target.checked)}
               />
               <span>
-                Tôi hiểu purge sẽ xoá metadata video và cố gắng xoá file
+                Tôi hiểu purge sẽ xóa metadata video và cố gắng xóa file
                 LOCAL_FILE video/thumbnail thuộc video này khỏi server storage.
               </span>
             </label>
@@ -307,8 +315,8 @@ export function VideoDetailPage() {
                   }
                 />
                 <span>
-                  Đồng thời yêu cầu backend xoá remote Cloudinary asset nếu
-                  backend hỗ trợ và asset thuộc video này.
+                  Đồng thời yêu cầu máy chủ xóa remote Cloudinary asset nếu máy
+                  chủ hỗ trợ và asset thuộc video này.
                 </span>
               </label>
             ) : null}
@@ -317,8 +325,8 @@ export function VideoDetailPage() {
               <div className="flex items-start gap-2 text-sm text-[var(--admin-text)]">
                 <HardDrive className="mt-0.5 size-4 shrink-0 text-[var(--admin-primary)]" />
                 <span>
-                  Kết quả purge chỉ hiển thị trạng thái xoá và dung lượng
-                  reclaimed; Admin Web không hiển thị storage path.
+                  Kết quả purge chỉ hiển thị trạng thái xóa và dung lượng đã thu
+                  hồi; Admin Web không hiển thị storage path.
                 </span>
               </div>
 
@@ -333,7 +341,7 @@ export function VideoDetailPage() {
                 ) : (
                   <CheckCircle2 className="size-4" />
                 )}
-                Purge permanently
+                Purge vĩnh viễn
               </Button>
             </div>
           </div>
@@ -429,7 +437,7 @@ function getStatusClass(status: VideoStatus): string {
   }
 
   if (status === "PROCESSING") {
-    return "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300";
+    return "bg-[var(--admin-warning-soft)] text-[var(--admin-warning)]";
   }
 
   return "bg-[var(--admin-primary-soft)] text-[var(--admin-primary)]";

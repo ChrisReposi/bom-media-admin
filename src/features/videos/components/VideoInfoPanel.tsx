@@ -1,7 +1,9 @@
 import { Clipboard, Pencil, Server } from "lucide-react";
+import type { ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 import {
   formatDuration,
@@ -17,7 +19,7 @@ type VideoInfoPanelProps = {
 };
 
 const statusLabels: Record<VideoStatus, string> = {
-  DISABLED: "Đã tắt",
+  DISABLED: "Đã vô hiệu hóa",
   DRAFT: "Nháp",
   FAILED: "Lỗi",
   PROCESSING: "Đang xử lý",
@@ -35,17 +37,28 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
         ? video.embedUrl
         : video.playbackUrl;
   const filterKeyLabel = formatVideoFilterKey(video.filterKey);
+  const sourceTypeLabel = isDatabaseVideo
+    ? "Cơ sở dữ liệu (DB_BLOB)"
+    : isLocalFileVideo
+      ? "File trên server (LOCAL_FILE)"
+      : isEmbedVideo
+        ? "Nhúng (embed)"
+        : (video.sourceType ?? "URL trực tiếp");
+  const mimeType =
+    video.localFileAsset?.mimeType ?? video.binaryAsset?.mimeType ?? null;
+  const fileSize =
+    video.localFileAsset?.sizeBytes ?? video.binaryAsset?.sizeBytes ?? null;
+  const videoChecksum = video.localFileAsset?.checksumSha256?.trim() || null;
+  const thumbnailChecksum =
+    video.localThumbnailAsset?.checksumSha256?.trim() || null;
+  const hasIntegrity = Boolean(videoChecksum || thumbnailChecksum);
 
-  async function copyPlayableUrl(): Promise<void> {
-    if (!playableUrl) {
-      return;
-    }
-
+  async function copyText(value: string, label: string): Promise<void> {
     try {
-      await navigator.clipboard.writeText(playableUrl);
-      toast.success("Đã sao chép link video.");
+      await navigator.clipboard.writeText(value);
+      toast.success(`Đã sao chép ${label}.`);
     } catch {
-      toast.error("Không thể sao chép link video.");
+      toast.error(`Không thể sao chép ${label}.`);
     }
   }
 
@@ -67,137 +80,256 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
         </Button>
       </div>
 
-      <div className="space-y-4">
-        <InfoRow label="Provider" value={getProviderLabel(video.provider)} />
-        <InfoRow
-          label="Source type"
-          value={
-            isDatabaseVideo
-              ? "Database blob"
-              : isLocalFileVideo
-                ? "Local server file"
-                : isEmbedVideo
-                  ? "Embed"
-                  : (video.sourceType ?? "Direct URL")
-          }
-        />
-        {video.binaryAsset ? (
-          <>
-            <InfoRow
-              label="Binary MIME"
-              value={video.binaryAsset.mimeType}
-              breakAll
-            />
-            <InfoRow
-              label="Binary size"
-              value={formatBytes(video.binaryAsset.sizeBytes)}
-            />
-          </>
-        ) : null}
-        {video.localFileAsset ? (
-          <>
-            <InfoRow
-              label="Local file MIME"
-              value={video.localFileAsset.mimeType}
-              breakAll
-            />
-            <InfoRow
-              label="Local file size"
-              value={formatBytes(video.localFileAsset.sizeBytes)}
-            />
-            <InfoRow
-              label="Original filename"
-              value={video.localFileAsset.originalFilename ?? "Chưa có"}
-              breakAll
-            />
-          </>
-        ) : null}
-        {video.localThumbnailAsset ? (
-          <InfoRow
-            label="Local thumbnail"
-            value={`${video.localThumbnailAsset.mimeType} · ${formatBytes(
-              video.localThumbnailAsset.sizeBytes,
-            )}`}
-            breakAll
+      <Section title="Tổng quan">
+        <dl className="space-y-3">
+          <MetaRow
+            copyLabel="ID video"
+            label="ID"
+            mono
+            value={video.id}
+            onCopy={() => copyText(video.id, "ID video")}
           />
-        ) : null}
-        <InfoRow label="Status" value={statusLabels[video.status]} />
-        <InfoRow label="Key lọc" value={filterKeyLabel ?? "Chưa gắn key"} />
-        <InfoRow
-          label="Duration"
-          value={formatDuration(video.durationSeconds)}
-        />
-        <InfoRow
-          label="View count"
-          value={`${formatViews(video.viewCount)} lượt xem`}
-        />
-        <InfoRow
-          label="Published at"
-          value={formatDateTime(video.publishedAt)}
-        />
-        <InfoRow label="Created at" value={formatDateTime(video.createdAt)} />
-        <InfoRow label="Updated at" value={formatDateTime(video.updatedAt)} />
+          <MetaRow label="Trạng thái" value={statusLabels[video.status]} />
+          <MetaRow
+            label="Key phân loại"
+            muted={!filterKeyLabel}
+            value={filterKeyLabel ?? "Chưa gắn key"}
+          />
+          <MetaRow label="Provider" value={getProviderLabel(video.provider)} />
+          <MetaRow label="Loại nguồn" value={sourceTypeLabel} />
+          {mimeType ? (
+            <MetaRow label="Định dạng" mono value={mimeType} />
+          ) : null}
+          {fileSize ? (
+            <MetaRow label="Dung lượng" value={formatBytes(fileSize)} />
+          ) : null}
+          <MetaRow
+            label="Thời lượng"
+            value={formatDuration(video.durationSeconds)}
+          />
+          <MetaRow
+            label="Lượt xem"
+            value={`${formatViews(video.viewCount)} lượt xem`}
+          />
+        </dl>
+      </Section>
 
+      <Section title="Thời gian">
+        <dl className="space-y-3">
+          <MetaRow
+            label="Ngày phát hành"
+            value={formatDateTime(video.publishedAt)}
+          />
+          <MetaRow label="Ngày tạo" value={formatDateTime(video.createdAt)} />
+          <MetaRow label="Cập nhật" value={formatDateTime(video.updatedAt)} />
+        </dl>
+      </Section>
+
+      <Section title="Nguồn phát">
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-text-muted)]">
               {isDatabaseVideo
-                ? "Database playback"
+                ? "Nguồn phát (cơ sở dữ liệu)"
                 : isLocalFileVideo
-                  ? "Server storage playback"
+                  ? "Nguồn phát (server storage)"
                   : isEmbedVideo
                     ? "Embed URL"
                     : "Playback URL"}
             </p>
             <Button
               aria-label={
-                isEmbedVideo ? "Copy embed link" : "Copy playback link"
+                isEmbedVideo ? "Sao chép embed URL" : "Sao chép playback URL"
               }
               disabled={!playableUrl}
               size="sm"
               type="button"
               variant="outline"
-              onClick={() => void copyPlayableUrl()}
+              onClick={() =>
+                void copyText(
+                  playableUrl ?? "",
+                  isEmbedVideo ? "embed URL" : "playback URL",
+                )
+              }
             >
               <Clipboard className="size-4" />
-              Copy
+              Sao chép
             </Button>
           </div>
           <p className="break-all rounded-md bg-[var(--admin-surface-alt)] px-3 py-2 text-sm text-[var(--admin-text)]">
             {isDatabaseVideo
-              ? "Stored in the database. Admin preview uses the protected admin API; share-link viewers use a token-protected public binary endpoint."
+              ? "Video lưu trong cơ sở dữ liệu. Bản xem trước cho quản trị viên dùng API admin bảo mật; người xem qua share link dùng endpoint binary công khai được bảo vệ bằng token."
               : isLocalFileVideo
-                ? "Stored on private server storage. Admin preview uses the protected admin API; share-link viewers use a token-protected public media endpoint."
+                ? "Video lưu trên server storage riêng. Bản xem trước cho quản trị viên dùng API admin bảo mật; người xem qua share link dùng endpoint media công khai được bảo vệ bằng token."
                 : playableUrl || "Chưa có URL phát video"}
           </p>
         </div>
+
+        <dl className="space-y-3">
+          {video.localFileAsset?.originalFilename ? (
+            <MetaRow
+              label="Tên file gốc"
+              mono
+              value={video.localFileAsset.originalFilename}
+            />
+          ) : null}
+          {video.providerAssetId ? (
+            <MetaRow
+              copyLabel="provider asset ID"
+              label="Provider asset ID"
+              mono
+              value={video.providerAssetId}
+              onCopy={() =>
+                copyText(video.providerAssetId ?? "", "provider asset ID")
+              }
+            />
+          ) : null}
+          <MetaRow
+            label="Thumbnail URL"
+            muted={!video.thumbnailUrl}
+            value={video.thumbnailUrl || "Chưa có thumbnail"}
+          />
+        </dl>
 
         {isLocalFileVideo ? (
           <div className="flex gap-3 rounded-md border border-[var(--admin-border)] bg-[var(--admin-surface-alt)] px-3 py-2 text-sm text-[var(--admin-text)]">
             <Server className="mt-0.5 size-4 shrink-0 text-[var(--admin-primary)]" />
             <p>
-              Storage keys and absolute server paths are intentionally hidden
-              from the Admin Web.
+              Storage key và đường dẫn tuyệt đối trên server được cố tình ẩn
+              khỏi Admin Web.
             </p>
           </div>
         ) : null}
+      </Section>
 
-        <InfoRow
-          label="Thumbnail URL"
-          value={video.thumbnailUrl || "Chưa có thumbnail"}
-          breakAll
-        />
+      {hasIntegrity ? (
+        <Section title="Tính toàn vẹn (SHA-256)">
+          <div className="space-y-3">
+            {videoChecksum ? (
+              <ChecksumRow
+                label="SHA-256 của file video"
+                value={videoChecksum}
+                onCopy={() => copyText(videoChecksum, "SHA-256 của file video")}
+              />
+            ) : null}
+            {thumbnailChecksum ? (
+              <ChecksumRow
+                label="SHA-256 của thumbnail"
+                value={thumbnailChecksum}
+                onCopy={() =>
+                  copyText(thumbnailChecksum, "SHA-256 của thumbnail")
+                }
+              />
+            ) : null}
+            <p className="text-xs leading-5 text-[var(--admin-text-muted)]">
+              Mã này hỗ trợ kiểm tra file có thay đổi hay không. Nó không tự
+              chứng minh quyền sở hữu bản quyền.
+            </p>
+          </div>
+        </Section>
+      ) : null}
 
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-text-muted)]">
-            Ghi chú
-          </p>
-          <p className="whitespace-pre-wrap rounded-md bg-[var(--admin-surface-alt)] px-3 py-2 text-sm leading-6 text-[var(--admin-text)]">
-            {video.description || "Chưa có ghi chú."}
-          </p>
-        </div>
-      </div>
+      <Section title="Ghi chú">
+        <p className="whitespace-pre-wrap rounded-md bg-[var(--admin-surface-alt)] px-3 py-2 text-sm leading-6 text-[var(--admin-text)]">
+          {video.description || "Chưa có ghi chú."}
+        </p>
+      </Section>
     </aside>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-2 border-t border-[var(--admin-border)] pt-4 first:border-t-0 first:pt-0">
+      <h3 className="text-sm font-semibold text-[var(--admin-text-strong)]">
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function MetaRow({
+  label,
+  value,
+  mono = false,
+  muted = false,
+  copyLabel,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  muted?: boolean;
+  copyLabel?: string;
+  onCopy?: () => void | Promise<void>;
+}) {
+  return (
+    <div className="space-y-1">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-text-muted)]">
+        {label}
+      </dt>
+      <dd className="flex items-start gap-2">
+        <span
+          className={cn(
+            "min-w-0 flex-1 break-all text-sm",
+            muted
+              ? "text-[var(--admin-text-muted)]"
+              : "text-[var(--admin-text-strong)]",
+            mono && "font-mono text-xs",
+          )}
+        >
+          {value}
+        </span>
+        {onCopy ? (
+          <CopyIconButton label={copyLabel ?? label} onCopy={onCopy} />
+        ) : null}
+      </dd>
+    </div>
+  );
+}
+
+function ChecksumRow({
+  label,
+  value,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  onCopy: () => void | Promise<void>;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-text-muted)]">
+          {label}
+        </p>
+        <CopyIconButton label={label} onCopy={onCopy} />
+      </div>
+      <p className="break-all rounded-md bg-[var(--admin-surface-alt)] px-3 py-2 font-mono text-xs text-[var(--admin-text-strong)]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function CopyIconButton({
+  label,
+  onCopy,
+}: {
+  label: string;
+  onCopy: () => void | Promise<void>;
+}) {
+  return (
+    <button
+      aria-label={`Sao chép ${label}`}
+      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-[var(--admin-border)] text-[var(--admin-text-muted)] transition-colors hover:border-[var(--admin-border-strong)] hover:text-[var(--admin-text-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-focus-ring)]"
+      title={`Sao chép ${label}`}
+      type="button"
+      onClick={() => void onCopy()}
+    >
+      <Clipboard className="size-3.5" />
+    </button>
   );
 }
 
@@ -219,33 +351,6 @@ function formatBytes(value?: string | number | null): string {
   }
 
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-}
-
-function InfoRow({
-  label,
-  value,
-  breakAll = false,
-}: {
-  label: string;
-  value: string;
-  breakAll?: boolean;
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-text-muted)]">
-        {label}
-      </p>
-      <p
-        className={
-          breakAll
-            ? "break-all text-sm text-[var(--admin-text-strong)]"
-            : "text-sm text-[var(--admin-text-strong)]"
-        }
-      >
-        {value}
-      </p>
-    </div>
-  );
 }
 
 function formatDateTime(value?: string | null): string {

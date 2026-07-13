@@ -607,7 +607,7 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
           />
         </div>
         <div className="border-t border-white/10 bg-black px-4 py-2 text-xs text-white/70">
-          Playback controls are provided by the embedded player.
+          Thanh điều khiển phát do trình phát nhúng cung cấp.
         </div>
       </div>
     );
@@ -659,10 +659,10 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
         ) : null}
         <span>
           {isDatabaseVideo
-            ? "Database video is stored, but admin preview is not available."
+            ? "Video đang lưu trong cơ sở dữ liệu, nhưng bản xem trước cho quản trị viên hiện không khả dụng."
             : isLocalFileVideo
-              ? "Server storage video is stored, but admin preview is not available."
-              : "Video chưa có playback URL"}
+              ? "Video đang lưu trên server storage, nhưng bản xem trước cho quản trị viên hiện không khả dụng."
+              : "Video chưa có playback URL."}
         </span>
       </div>
     );

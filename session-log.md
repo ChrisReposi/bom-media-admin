@@ -2,6 +2,80 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-13 — UX-4 video detail
+
+Controlled UI/UX upgrade, phase UX-4 (`/videos/:videoId`). Presentation, Vietnamese
+copy, metadata grouping and accessibility only. No backend contract, data-fetching,
+purge payload, player/object-URL logic, or edit flow changed. No new dependency; no
+new component file (VideoInfoPanel reorganized inline). Only existing `VideoAsset`
+fields are shown — no invented/evidence fields.
+
+### Changed
+
+- `src/pages/VideoDetailPage.tsx`:
+  - Header: back button → "Danh sách video"; single `<h1>` "Chi tiết video" with the
+    video ID as muted sub-text; the video title stays `<h2>` in the main column.
+  - Status badge now always shown (including READY) so status is explicit, not just a
+    text mention; PROCESSING colour moved from hardcoded amber to `--admin-warning`.
+  - DISABLED label aligned to "Đã vô hiệu hóa" (was "Đã tắt").
+  - Danger Zone: Vietnamese copy ("Khu vực nguy hiểm", "Xóa vĩnh viễn", "Purge vĩnh
+    viễn"), explains disable ≠ purge, not-undoable-without-backup, and backend may
+    reject if assigned/shared. Added `id`/`aria-describedby` linking the exact-ID input
+    to its "Phải khớp" hint. All purge logic is byte-identical: exact
+    `purgeConfirmation.trim() === video.id`, `purgeUnderstood` checkbox, `confirmVideoId`
+    payload, `deleteRemoteAsset` only when `provider === "CLOUDINARY" && providerAssetId`,
+    `canPurge` gate, reset-on-close, success → `/videos`, `formatPurgeSuccessMessage`,
+    no storage path shown.
+- `src/features/videos/components/VideoInfoPanel.tsx`: reorganized the flat metadata
+  list into semantic `<dl>` groups — **Tổng quan** (ID + copy, status, filter key,
+  provider, source type, MIME, size, duration, views), **Thời gian** (published/created/
+  updated, absolute `vi-VN` datetime), **Nguồn phát** (playback/embed/DB/local display +
+  copy, original filename, provider asset ID + copy, thumbnail URL, LOCAL_FILE
+  storage-hidden note), **Tính toàn vẹn (SHA-256)** and **Ghi chú**. Added a reusable
+  in-file `CopyButton`/`MetaRow`/`ChecksumRow`/`Section`. Vietnamized the previously
+  English source/preview strings.
+- SHA-256 integrity: shows `localFileAsset.checksumSha256` / `localThumbnailAsset.
+checksumSha256` only when present (guarded by `hasIntegrity`; no fake placeholder),
+  in monospace, break-all, with copy buttons and the neutral disclaimer "Mã này hỗ trợ
+  kiểm tra file có thay đổi hay không. Nó không tự chứng minh quyền sở hữu bản quyền."
+  No ownership/legal labels; checksum is never computed client-side or sent anywhere;
+  backend value only trimmed for display.
+- `src/features/videos/components/VideoPlayerPanel.tsx`: only three user-visible English
+  strings Vietnamized (embed-controls note + the two "stored but preview unavailable"
+  messages). Playback/source/object-URL/keyboard logic untouched.
+- `src/features/videos/components/VideoDetailErrorState.tsx`: added `role="alert"`.
+- `VideoDetailSkeleton.tsx` was already token-based with no fake data, so left unchanged.
+
+### Verified
+
+- `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build` all pass;
+  `git diff --check` clean; scoped Prettier on all UX-4 files passes.
+- Security greps return nothing for "Verified Owner / Legal proof / Bằng chứng sở hữu /
+  Copyright verified / evidence score / legal confidence" and for storage-path leakage
+  (storageKey / absolute paths) in the detail page and panels.
+- Purge invariants confirmed present/unchanged via grep (exact-ID guard, `confirmVideoId`,
+  `deleteRemoteAsset` conditional, CLOUDINARY + providerAssetId condition, `canPurge`).
+- Bundle: VideoDetailPage lazy chunk 31.16 → 34.09 kB raw (gzip 8.84 → 9.56); eager main
+  chunk flat (398.09 kB).
+- NOT browser-verified: no browser tooling is configured. The 18 detail-page checks
+  (READY/DISABLED/LOCAL_FILE/manual/embed/no-thumbnail, long metadata, checksum copy,
+  edit modal, purge wrong-ID / no-checkbox / cancel-reset / backend-reject, Cloudinary
+  checkbox condition, mobile/dark, error/retry, back) were reasoned about statically but
+  not exercised.
+
+### Pending
+
+- Browser verification of the full detail-page set (18 checks above), including purge
+  gating, checksum copy and the Cloudinary-only remote-delete checkbox, is still pending
+  (no browser tooling installed).
+- No real automated test suite exists; `yarn test` is still a placeholder `echo`.
+- `../../.prettierignore` (referenced by format scripts) is still missing/external;
+  deferred to UX-8.
+- Evidence-readiness: fields the backend does not yet expose (rights holder, rights
+  scope, canonical original URL, actor/audit, owner verification, legal status) were NOT
+  mocked; they are deferred to the UX-7 gap analysis.
+- UX-5 (Dashboard composer) not started.
+
 ## 2026-07-13 — UX-3 videos list
 
 Controlled UI/UX upgrade, phase UX-3 (`/videos` list). Presentation, Vietnamese
