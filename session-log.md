@@ -2,6 +2,80 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-13 — UX-6 login and settings
+
+Controlled UI/UX upgrade, phase UX-6 (Login + Settings). Presentation, Vietnamese
+copy, accessibility and a large login-chunk bundle reduction. No authentication
+architecture, schema, form logic, API contract or session behaviour changed. No new
+dependency.
+
+Pre-checkpoint review of UX-5 `WebsiteQuickSelect`: the selectable item was a
+`<div role="button">` with hand-rolled Space/Enter handling and a nested `<a>`. Per
+review, converted the selection control to a native `<button>` (native keyboard
+activation, single toggle) and moved the domain link out to a sibling `<p>` so there is
+no nested interactive element. Committed as the UX-5 checkpoint.
+
+### Changed
+
+- Added `src/components/common/PasswordVisibilityButton.tsx`: shared, presentation-only
+  show/hide toggle (accessible name, `type="button"`, focus ring, token colours). Used in
+  Login (1 field) and Settings (4 fields) — 5 call sites. Holds no auth/form logic.
+- `LoginPage.tsx`: rebuilt without framer-motion. All form logic is unchanged —
+  `loginSchema` (trim/3-32/regex, 1-128), `loginResolver`, `useForm` mode/reValidateMode/
+  defaults, `submitLockRef`, `status === "loading"` guard, `loginAdminThunk`, fulfilled
+  match, root/server error, `location.state.from.pathname` redirect with `replace: true`,
+  the authenticated-redirect effect, `themeMode`, `toggleTheme()`. Visual: calm single
+  card on the shared body background (removed the multi-radial gradients, `backdrop-blur-xl`
+  and oversized shadow), all `--admin-*` tokens instead of hardcoded slate/blue; one `<h1>`;
+  real `<label htmlFor>`; error `<p>` with stable ids + `aria-describedby`; root error with
+  `role="alert"` + `aria-live="assertive"`; submit with `aria-busy` and a spinner that
+  respects `motion-reduce`. Kept the theme toggle (token-styled, accessible name). Enter
+  submit and disabled-when-`!isValid` behaviour unchanged.
+- `SettingsPage.tsx`: `changePasswordSchema`, `superRefine` (confirm match + new ≠ old),
+  `mode: "onBlur"`, defaults, `changeAdminPassword({ oldPassword, newPassword, secretCode })`
+  (still no `confirmNewPassword` sent), the 401-verification-failure branch,
+  `normalizeApiError`, auth-error → `clearCredentials` + `persistor.flush()` + `/login`,
+  success → toast + reset + `clearCredentials` + `persistor.flush()` + `/login` are all
+  unchanged. Presentation: `<h1>` + description; each of the four password fields now uses
+  an explicit `<label htmlFor>` + `id` + `aria-invalid` + `aria-describedby` and the shared
+  `PasswordVisibilityButton`; `FieldError` gained a stable `id` and an `alert` variant, and
+  the form-level (root) error now renders with `role="alert"`; added a min-8-characters hint
+  under the new-password field (matches the existing schema; no fake strength meter, no
+  extra character-class requirements). Autocomplete values unchanged
+  (current-password / new-password / new-password / off).
+
+### Verified
+
+- `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build` all pass;
+  `git diff --check` clean; scoped Prettier on all UX-6 files passes.
+- Security grep returns nothing for `console.log` / `console.debug` / `localStorage` /
+  `sessionStorage` in LoginPage, SettingsPage and PasswordVisibilityButton — no logging or
+  persistence of credentials; `confirmNewPassword` is not sent to the backend.
+- Confirmed invariants by grep: `loginSchema`/`changePasswordSchema` unchanged,
+  `submitLockRef` present, `loginAdminThunk` unchanged, `state.from` redirect unchanged,
+  change-password payload has no `confirmNewPassword`, session clear
+  (`clearCredentials`+`persistor.flush`+`/login`) intact.
+- Bundle: LoginPage lazy chunk dropped from 131.10 → 5.42 kB raw (gzip 43.05 → 2.29 kB) by
+  removing framer-motion from the login screen — a large win for the first page users load.
+  SettingsPage flat (8.85 → 8.88 kB). Eager main chunk slightly smaller (398.09 → 397.50 kB).
+  `main.tsx` still wraps the app in framer-motion's lightweight `MotionConfig` (out of UX-6
+  scope); it is now inert for Login (no motion components consume it) but harmless.
+- NOT browser-verified: no browser tooling is configured. The Login checks (validation,
+  submit/double-submit/Enter, error, redirect-to-origin, theme toggle, show/hide, mobile/
+  dark, reduced motion) and Settings checks (validation, mismatch, new=old, wrong current/
+  secret, generic error, auth-expired, success-clears-session, four show/hide toggles,
+  mobile/dark) were reasoned about statically but not exercised.
+
+### Pending
+
+- Browser + live-API verification of Login and the Settings password-change flow (including
+  the success path that clears the session and returns to `/login`, and that the old session
+  cannot be reused) is still pending — no browser tooling and no test account exercised here.
+- No real automated test suite exists; `yarn test` is still a placeholder `echo`.
+- `../../.prettierignore` (referenced by format scripts) is still missing/external; deferred
+  to UX-8.
+- UX-7 (Evidence-readiness gap analysis document) not started.
+
 ## 2026-07-13 — UX-5 dashboard share workflow
 
 Controlled UI/UX upgrade, phase UX-5 (Dashboard + Share Link Composer). Presentation,

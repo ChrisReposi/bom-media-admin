@@ -1,12 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
-import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { z } from "zod/v4";
 
+import { PasswordVisibilityButton } from "@/components/common/PasswordVisibilityButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { changeAdminPassword } from "@/features/auth/authApi";
@@ -59,12 +60,28 @@ const changePasswordResolver = zodResolver(
   changePasswordSchema as unknown as Parameters<typeof zodResolver>[0],
 ) as unknown as Resolver<ChangePasswordFormValues>;
 
-function FieldError({ message }: { message?: string }) {
+function FieldError({
+  id,
+  message,
+  alert = false,
+}: {
+  id?: string;
+  message?: string;
+  alert?: boolean;
+}) {
   if (!message) {
     return null;
   }
 
-  return <p className="text-sm text-(--admin-danger) mt-1">{message}</p>;
+  return (
+    <p
+      className="mt-1 text-sm text-(--admin-danger)"
+      id={id}
+      role={alert ? "alert" : undefined}
+    >
+      {message}
+    </p>
+  );
 }
 
 function fieldClass(hasError: boolean): string {
@@ -155,9 +172,14 @@ export function SettingsPage() {
 
   return (
     <section className="space-y-6">
-      <h1 className="text-xl font-semibold text-(--admin-text-strong)">
-        Cài đặt
-      </h1>
+      <div>
+        <h1 className="text-2xl font-semibold text-(--admin-text-strong)">
+          Cài đặt
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-(--admin-text-muted)">
+          Quản lý tài khoản và thông tin bảo mật của phiên quản trị.
+        </p>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,42rem)_minmax(18rem,1fr)]">
         <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm">
@@ -177,128 +199,155 @@ export function SettingsPage() {
           </div>
 
           <form className="space-y-4" noValidate onSubmit={onSubmit}>
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Mật khẩu hiện tại</span>
+            <div>
+              <label
+                className="mb-2 block text-sm font-medium text-(--admin-text-strong)"
+                htmlFor="oldPassword"
+              >
+                Mật khẩu hiện tại
+              </label>
               <div className="relative">
                 <Input
+                  id="oldPassword"
+                  aria-describedby={
+                    errors.oldPassword ? "oldPassword-error" : undefined
+                  }
+                  aria-invalid={!!errors.oldPassword}
                   autoComplete="current-password"
                   className={cn(fieldClass(!!errors.oldPassword), "pr-10")}
                   type={showOldPassword ? "text" : "password"}
-                  aria-invalid={!!errors.oldPassword}
                   {...register("oldPassword")}
                 />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--admin-text-muted) hover:text-(--admin-text-strong) transition-colors"
-                  aria-label={
-                    showOldPassword
-                      ? "Ẩn mật khẩu hiện tại"
-                      : "Hiện mật khẩu hiện tại"
-                  }
-                  onClick={() => setShowOldPassword(!showOldPassword)}
-                >
-                  {showOldPassword ? (
-                    <EyeOff className="size-4" />
-                  ) : (
-                    <Eye className="size-4" />
-                  )}
-                </button>
+                <PasswordVisibilityButton
+                  hideLabel="Ẩn mật khẩu hiện tại"
+                  showLabel="Hiện mật khẩu hiện tại"
+                  visible={showOldPassword}
+                  onToggle={() => setShowOldPassword(!showOldPassword)}
+                />
               </div>
-              <FieldError message={errors.oldPassword?.message} />
-            </label>
+              <FieldError
+                id="oldPassword-error"
+                message={errors.oldPassword?.message}
+              />
+            </div>
 
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Mật khẩu mới</span>
+            <div>
+              <label
+                className="mb-2 block text-sm font-medium text-(--admin-text-strong)"
+                htmlFor="newPassword"
+              >
+                Mật khẩu mới
+              </label>
               <div className="relative">
                 <Input
+                  id="newPassword"
+                  aria-describedby={
+                    errors.newPassword
+                      ? "newPassword-error"
+                      : "newPassword-hint"
+                  }
+                  aria-invalid={!!errors.newPassword}
                   autoComplete="new-password"
                   className={cn(fieldClass(!!errors.newPassword), "pr-10")}
                   type={showNewPassword ? "text" : "password"}
-                  aria-invalid={!!errors.newPassword}
                   {...register("newPassword")}
                 />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--admin-text-muted) hover:text-(--admin-text-strong) transition-colors"
-                  aria-label={
-                    showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"
-                  }
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                >
-                  {showNewPassword ? (
-                    <EyeOff className="size-4" />
-                  ) : (
-                    <Eye className="size-4" />
-                  )}
-                </button>
+                <PasswordVisibilityButton
+                  hideLabel="Ẩn mật khẩu mới"
+                  showLabel="Hiện mật khẩu mới"
+                  visible={showNewPassword}
+                  onToggle={() => setShowNewPassword(!showNewPassword)}
+                />
               </div>
-              <FieldError message={errors.newPassword?.message} />
-            </label>
+              {errors.newPassword ? (
+                <FieldError
+                  id="newPassword-error"
+                  message={errors.newPassword?.message}
+                />
+              ) : (
+                <p
+                  className="mt-1 text-xs text-(--admin-text-muted)"
+                  id="newPassword-hint"
+                >
+                  Tối thiểu 8 ký tự.
+                </p>
+              )}
+            </div>
 
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Xác nhận mật khẩu mới</span>
+            <div>
+              <label
+                className="mb-2 block text-sm font-medium text-(--admin-text-strong)"
+                htmlFor="confirmNewPassword"
+              >
+                Xác nhận mật khẩu mới
+              </label>
               <div className="relative">
                 <Input
+                  id="confirmNewPassword"
+                  aria-describedby={
+                    errors.confirmNewPassword
+                      ? "confirmNewPassword-error"
+                      : undefined
+                  }
+                  aria-invalid={!!errors.confirmNewPassword}
                   autoComplete="new-password"
                   className={cn(
                     fieldClass(!!errors.confirmNewPassword),
                     "pr-10",
                   )}
                   type={showConfirmPassword ? "text" : "password"}
-                  aria-invalid={!!errors.confirmNewPassword}
                   {...register("confirmNewPassword")}
                 />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--admin-text-muted) hover:text-(--admin-text-strong) transition-colors"
-                  aria-label={
-                    showConfirmPassword
-                      ? "Ẩn xác nhận mật khẩu mới"
-                      : "Hiện xác nhận mật khẩu mới"
-                  }
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff className="size-4" />
-                  ) : (
-                    <Eye className="size-4" />
-                  )}
-                </button>
+                <PasswordVisibilityButton
+                  hideLabel="Ẩn xác nhận mật khẩu mới"
+                  showLabel="Hiện xác nhận mật khẩu mới"
+                  visible={showConfirmPassword}
+                  onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
+                />
               </div>
-              <FieldError message={errors.confirmNewPassword?.message} />
-            </label>
+              <FieldError
+                id="confirmNewPassword-error"
+                message={errors.confirmNewPassword?.message}
+              />
+            </div>
 
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Mã xác thực đổi mật khẩu</span>
+            <div>
+              <label
+                className="mb-2 block text-sm font-medium text-(--admin-text-strong)"
+                htmlFor="secretCode"
+              >
+                Mã xác thực đổi mật khẩu
+              </label>
               <div className="relative">
                 <Input
+                  id="secretCode"
+                  aria-describedby={
+                    errors.secretCode ? "secretCode-error" : undefined
+                  }
+                  aria-invalid={!!errors.secretCode}
                   autoComplete="off"
                   className={cn(fieldClass(!!errors.secretCode), "pr-10")}
                   type={showSecretCode ? "text" : "password"}
-                  aria-invalid={!!errors.secretCode}
                   {...register("secretCode")}
                 />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--admin-text-muted) hover:text-(--admin-text-strong) transition-colors"
-                  aria-label={
-                    showSecretCode
-                      ? "Ẩn mã xác thực đổi mật khẩu"
-                      : "Hiện mã xác thực đổi mật khẩu"
-                  }
-                  onClick={() => setShowSecretCode(!showSecretCode)}
-                >
-                  {showSecretCode ? (
-                    <EyeOff className="size-4" />
-                  ) : (
-                    <Eye className="size-4" />
-                  )}
-                </button>
+                <PasswordVisibilityButton
+                  hideLabel="Ẩn mã xác thực đổi mật khẩu"
+                  showLabel="Hiện mã xác thực đổi mật khẩu"
+                  visible={showSecretCode}
+                  onToggle={() => setShowSecretCode(!showSecretCode)}
+                />
               </div>
-              <FieldError message={errors.secretCode?.message} />
-            </label>
+              <FieldError
+                id="secretCode-error"
+                message={errors.secretCode?.message}
+              />
+            </div>
 
-            <FieldError message={errors.root?.message} />
+            <FieldError
+              alert
+              id="change-password-error"
+              message={errors.root?.message}
+            />
 
             <div className="flex flex-col-reverse gap-3 border-t border-(--admin-border) pt-5 sm:flex-row sm:justify-end">
               <Button disabled={isSubmitting} type="submit">
