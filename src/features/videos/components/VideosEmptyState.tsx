@@ -23,7 +23,7 @@ export function VideosEmptyState({ onCreate }: VideosEmptyStateProps) {
 
       <Button className="mt-6" type="button" onClick={onCreate}>
         <Plus className="size-4" />
-        Thêm Video
+        Thêm video
       </Button>
     </section>
   );

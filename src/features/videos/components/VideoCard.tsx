@@ -34,7 +34,7 @@ type VideoCardProps = {
 };
 
 const statusLabels: Record<VideoStatus, string> = {
-  DISABLED: "Đã tắt",
+  DISABLED: "Đã vô hiệu hóa",
   DRAFT: "Nháp",
   FAILED: "Lỗi",
   PROCESSING: "Đang xử lý",
@@ -56,7 +56,7 @@ function getStatusClass(status: VideoStatus): string {
   }
 
   if (status === "PROCESSING") {
-    return "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300";
+    return "bg-[var(--admin-warning-soft)] text-[var(--admin-warning)]";
   }
 
   return "bg-[var(--admin-primary-soft)] text-[var(--admin-primary)]";
@@ -283,6 +283,15 @@ export function VideoCard({
         {canToggleStatus ? (
           <button
             aria-label={`${statusActionLabel} ${video.title}`}
+            className={cn(
+              "inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-(--admin-border) text-(--admin-text) transition-colors",
+              "hover:border-(--admin-border-strong) hover:bg-(--admin-hover-row) hover:text-(--admin-text-strong)",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--admin-focus-ring)",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              canRestore
+                ? "hover:text-(--admin-primary)"
+                : "hover:border-(--admin-danger) hover:text-(--admin-danger)",
+            )}
             disabled={isStatusUpdating}
             title={statusActionLabel}
             type="button"

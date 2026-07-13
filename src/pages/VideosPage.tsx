@@ -1,9 +1,6 @@
 import {
-  AlertTriangle,
-  Ban,
   ChevronLeft,
   ChevronRight,
-  Loader2,
   Plus,
   RefreshCcw,
   Search,
@@ -18,11 +15,11 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
+import { ConfirmActionDialog } from "@/components/common/ConfirmActionDialog";
 import { Button } from "@/components/ui/button";
 import { LazyModalFallback } from "@/components/common/LazyModalFallback";
 import { Input } from "@/components/ui/input";
@@ -66,7 +63,7 @@ function normalizeVideoSearchInput(value: string): string {
 }
 
 const videoStatusLabels: Record<VideoStatus, string> = {
-  DISABLED: "Đã tắt",
+  DISABLED: "Đã vô hiệu hóa",
   DRAFT: "Nháp",
   FAILED: "Lỗi",
   PROCESSING: "Đang xử lý",
@@ -75,10 +72,10 @@ const videoStatusLabels: Record<VideoStatus, string> = {
 
 function getTabClass(isActive: boolean): string {
   return [
-    "inline-flex h-9 items-center rounded-full border px-3 text-sm font-medium transition-colors",
+    "inline-flex h-9 items-center rounded-full border px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--admin-focus-ring)",
     isActive
-      ? "border-(--admin-primary) bg-(--admin-primary-soft) text-(--admin-primary)"
-      : "border-(--admin-border) bg-(--admin-surface) text-(--admin-text) hover:border-(--admin-border-strong) hover:text-(--admin-text-strong)",
+      ? "border-(--admin-primary) bg-(--admin-primary-soft) font-semibold text-(--admin-primary)"
+      : "border-(--admin-border) bg-(--admin-surface) font-medium text-(--admin-text) hover:border-(--admin-border-strong) hover:text-(--admin-text-strong)",
   ].join(" ");
 }
 
@@ -112,8 +109,6 @@ export function VideosPage() {
   const videoListAbortRef = useRef<AbortController | null>(null);
   const videoListRequestVersionRef = useRef(0);
   const hasLoadedVideoListRef = useRef(false);
-  const statusModalRef = useRef<HTMLDivElement | null>(null);
-  const statusCancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const fetchVideos = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -216,18 +211,6 @@ export function VideosPage() {
     setStatusActionVideo(null);
     setStatusActionTarget(null);
   }, [statusUpdatingVideoId]);
-
-  useEffect(() => {
-    if (!statusActionVideo || !statusActionTarget) {
-      return;
-    }
-
-    const focusTimeout = window.setTimeout(() => {
-      statusCancelButtonRef.current?.focus();
-    }, 0);
-
-    return () => window.clearTimeout(focusTimeout);
-  }, [statusActionVideo, statusActionTarget]);
 
   function handleStatusChange(nextStatus: VideoStatus): void {
     if (nextStatus === statusFilter) {
@@ -350,44 +333,6 @@ export function VideosPage() {
     }
   }
 
-  function handleStatusModalKeyDown(
-    event: KeyboardEvent<HTMLDivElement>,
-  ): void {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeStatusActionModal();
-      return;
-    }
-
-    if (event.key !== "Tab" || !statusModalRef.current) {
-      return;
-    }
-
-    const focusableElements = Array.from(
-      statusModalRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
-
-    if (focusableElements.length === 0) {
-      return;
-    }
-
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-
-    if (event.shiftKey && document.activeElement === firstElement) {
-      event.preventDefault();
-      lastElement.focus();
-      return;
-    }
-
-    if (!event.shiftKey && document.activeElement === lastElement) {
-      event.preventDefault();
-      firstElement.focus();
-    }
-  }
-
   const hasVideos = videos.length > 0;
   const currentPage = meta?.page ?? page;
   const totalPages = meta?.totalPages ?? 0;
@@ -430,21 +375,24 @@ export function VideosPage() {
     statusActionVideo !== null &&
     statusUpdatingVideoId === statusActionVideo.id;
   const statusActionTitle = isStatusActionDisable
-    ? "Vô hiệu hoá video?"
+    ? "Vô hiệu hóa video?"
     : "Kích hoạt lại video?";
-  const statusActionDescription = isStatusActionDisable
-    ? "Video này sẽ được chuyển sang trạng thái DISABLED. Thao tác này chỉ ngừng sử dụng video trong hệ thống, không xoá metadata và không xoá file khỏi server storage/NVMe. Nếu muốn giải phóng dung lượng, hãy dùng Purge Permanently ở trang chi tiết video."
-    : "Video này sẽ được chuyển lại trạng thái READY. Nếu video đang được gán vào website hoặc share link hợp lệ, video có thể hiển thị lại cho người xem theo quyền truy cập tương ứng.";
   const statusActionConfirmLabel = isStatusActionDisable
-    ? "Vô hiệu hoá"
+    ? "Vô hiệu hóa"
     : "Kích hoạt lại";
+  const hasActiveFilters = hasAppliedSearch || hasAppliedFilterKey;
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <h1 className="text-2xl font-semibold text-(--admin-text-strong)">
-          Video Management
-        </h1>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold text-(--admin-text-strong)">
+            Quản lý video
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-(--admin-text-muted)">
+            Quản lý nguồn phát, trạng thái và metadata của video trong hệ thống.
+          </p>
+        </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
@@ -463,12 +411,12 @@ export function VideosPage() {
 
           <Button type="button" onClick={() => setModalOpen(true)}>
             <Plus className="size-4" />
-            Thêm Video
+            Thêm video
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="space-y-4 rounded-lg border border-(--admin-border) bg-(--admin-surface) p-4 shadow-sm">
         <div
           aria-label="Lọc video theo trạng thái"
           className="flex flex-wrap gap-2"
@@ -492,140 +440,201 @@ export function VideosPage() {
           })}
         </div>
 
-        <div className="w-full lg:max-w-md">
-          <form
-            className="flex w-full flex-col gap-2 sm:flex-row"
-            onSubmit={handleSearchSubmit}
-          >
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--admin-text-muted)" />
-              <Input
-                aria-label="Tìm video theo tiêu đề"
-                className="h-10 bg-(--admin-surface) pl-9 pr-5 text-(--admin-text-strong)"
-                placeholder="Tìm theo tiêu đề video"
-                type="search"
-                value={searchInput}
-                onChange={(event) =>
-                  setSearchInput(
-                    event.target.value.slice(0, VIDEOS_SEARCH_MAX_LENGTH),
-                  )
-                }
-              />
-            </div>
-
-            <Button
-              disabled={isSearchButtonDisabled}
-              type="submit"
-              variant="outline"
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <form
+              className="flex w-full flex-col gap-2 sm:flex-row"
+              onSubmit={handleSearchSubmit}
             >
-              <Search className="size-4" />
-              Tìm kiếm
-            </Button>
-          </form>
-          {isSearchInputTooShort ? (
-            <p className="mt-2 text-xs text-(--admin-text-muted)">
-              Nhập ít nhất {VIDEOS_SEARCH_MIN_LENGTH} ký tự để tìm video.
-            </p>
-          ) : searchError ? (
-            <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
-              <span>{searchError}</span>
-              <button
-                className="font-medium underline-offset-2 hover:underline"
-                type="button"
-                onClick={() => void fetchVideos({ silent: true })}
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--admin-text-muted)" />
+                <Input
+                  aria-label="Tìm video theo tiêu đề"
+                  className="h-10 bg-(--admin-input-bg) pl-9 pr-9 text-(--admin-text-strong)"
+                  placeholder="Tìm theo tiêu đề video"
+                  type="search"
+                  value={searchInput}
+                  onChange={(event) =>
+                    setSearchInput(
+                      event.target.value.slice(0, VIDEOS_SEARCH_MAX_LENGTH),
+                    )
+                  }
+                />
+                {searchInput ? (
+                  <button
+                    aria-label="Xóa tìm kiếm"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-(--admin-text-muted) transition hover:bg-(--admin-surface-alt) hover:text-(--admin-text-strong)"
+                    type="button"
+                    onClick={handleClearSearch}
+                  >
+                    <X className="size-4" />
+                  </button>
+                ) : null}
+              </div>
+
+              <Button
+                disabled={isSearchButtonDisabled}
+                type="submit"
+                variant="outline"
               >
-                Thử lại
-              </button>
-            </div>
-          ) : null}
-          <form
-            className="mt-3 flex w-full flex-col gap-2 sm:flex-row"
-            onSubmit={handleFilterKeySubmit}
+                <Search className="size-4" />
+                Tìm kiếm
+              </Button>
+            </form>
+            {isSearchInputTooShort ? (
+              <p className="mt-2 text-xs text-(--admin-text-muted)">
+                Nhập ít nhất {VIDEOS_SEARCH_MIN_LENGTH} ký tự để tìm video.
+              </p>
+            ) : null}
+          </div>
+
+          <div>
+            <form
+              className="flex w-full flex-col gap-2 sm:flex-row"
+              onSubmit={handleFilterKeySubmit}
+            >
+              <div className="relative flex-1">
+                <Input
+                  aria-label="Lọc video theo key phân loại"
+                  className="h-10 bg-(--admin-input-bg) pr-9 text-(--admin-text-strong)"
+                  list="video-filter-key-suggestions"
+                  placeholder="Lọc theo key, ví dụ: sml, msa"
+                  value={filterKeyInput}
+                  onChange={(event) => {
+                    setFilterKeyInput(
+                      event.target.value.slice(0, VIDEO_FILTER_KEY_MAX_LENGTH),
+                    );
+                    setFilterKeyError(null);
+                  }}
+                />
+                {filterKeyInput ? (
+                  <button
+                    aria-label="Xóa key lọc"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-(--admin-text-muted) transition hover:bg-(--admin-surface-alt) hover:text-(--admin-text-strong)"
+                    type="button"
+                    onClick={handleClearFilterKey}
+                  >
+                    <X className="size-4" />
+                  </button>
+                ) : null}
+                <datalist id="video-filter-key-suggestions">
+                  {filterKeySuggestions.map((filterKey) => (
+                    <option key={filterKey} value={filterKey} />
+                  ))}
+                </datalist>
+              </div>
+
+              <Button
+                disabled={isFilterKeyButtonDisabled}
+                type="submit"
+                variant="outline"
+              >
+                Lọc theo key
+              </Button>
+            </form>
+            {filterKeyError || isFilterKeyInputInvalid ? (
+              <p className="mt-2 text-xs text-(--admin-danger)">
+                {filterKeyError ??
+                  (normalizedFilterKeyInput === "all"
+                    ? "Không sử dụng all làm key lọc."
+                    : "Key lọc chỉ được gồm chữ thường, số và dấu gạch dưới.")}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        {searchError ? (
+          <div
+            className="flex items-center justify-between gap-3 rounded-md border border-(--admin-warning) bg-(--admin-warning-soft) px-3 py-2 text-xs text-(--admin-text-strong)"
+            role="alert"
           >
-            <div className="relative flex-1">
-              <Input
-                aria-label="Lọc video theo key"
-                className="h-10 bg-(--admin-surface) pr-9 text-(--admin-text-strong)"
-                list="video-filter-key-suggestions"
-                placeholder="Lọc theo key: sml, msa..."
-                value={filterKeyInput}
-                onChange={(event) => {
-                  setFilterKeyInput(
-                    event.target.value.slice(0, VIDEO_FILTER_KEY_MAX_LENGTH),
-                  );
-                  setFilterKeyError(null);
-                }}
-              />
-              {filterKeyInput ? (
+            <span>{searchError}</span>
+            <button
+              className="shrink-0 font-medium underline-offset-2 hover:underline"
+              type="button"
+              onClick={() => void fetchVideos({ silent: true })}
+            >
+              Thử lại
+            </button>
+          </div>
+        ) : null}
+
+        {hasActiveFilters ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-(--admin-text-muted)">
+              Bộ lọc đang áp dụng:
+            </span>
+            {hasAppliedSearch ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-(--admin-border) bg-(--admin-surface-alt) py-1 pl-3 pr-1 text-xs text-(--admin-text-strong)">
+                Tìm kiếm: “{appliedSearch}”
                 <button
-                  aria-label="Xóa key lọc"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-(--admin-text-muted) transition hover:bg-(--admin-surface-alt) hover:text-(--admin-text-strong)"
+                  aria-label="Xóa bộ lọc tìm kiếm"
+                  className="inline-flex size-4 items-center justify-center rounded-full text-(--admin-text-muted) transition hover:bg-(--admin-hover-row) hover:text-(--admin-text-strong)"
+                  type="button"
+                  onClick={handleClearSearch}
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ) : null}
+            {hasAppliedFilterKey ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-(--admin-border) bg-(--admin-surface-alt) py-1 pl-3 pr-1 text-xs text-(--admin-text-strong)">
+                Key: {appliedFilterKey}
+                <button
+                  aria-label="Xóa bộ lọc theo key"
+                  className="inline-flex size-4 items-center justify-center rounded-full text-(--admin-text-muted) transition hover:bg-(--admin-hover-row) hover:text-(--admin-text-strong)"
                   type="button"
                   onClick={handleClearFilterKey}
                 >
-                  <X className="size-4" />
+                  <X className="size-3" />
                 </button>
-              ) : null}
-              <datalist id="video-filter-key-suggestions">
-                {filterKeySuggestions.map((filterKey) => (
-                  <option key={filterKey} value={filterKey} />
-                ))}
-              </datalist>
-            </div>
-
-            <Button
-              disabled={isFilterKeyButtonDisabled}
-              type="submit"
-              variant="outline"
-            >
-              Lọc key
-            </Button>
-          </form>
-          {filterKeyError || isFilterKeyInputInvalid ? (
-            <p className="mt-2 text-xs text-[var(--admin-danger)]">
-              {filterKeyError ??
-                (normalizedFilterKeyInput === "all"
-                  ? "Không sử dụng all làm key lọc."
-                  : "Key lọc chỉ được gồm chữ thường, số và dấu gạch dưới.")}
-            </p>
-          ) : null}
-        </div>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
-      <div className="flex flex-col gap-3 text-sm text-(--admin-text) md:flex-row md:items-center md:justify-between">
-        <span>
-          Tổng cộng: {meta?.total ?? videos.length} videos
-          {hasAppliedSearch ? ` · Tìm kiếm: "${appliedSearch}"` : ""}
-          {hasAppliedFilterKey ? ` · Key: ${appliedFilterKey}` : ""}
-        </span>
+      <div className="flex flex-col gap-3 text-sm text-(--admin-text) sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          Tổng cộng:{" "}
+          <span className="font-medium text-(--admin-text-strong)">
+            {meta?.total ?? videos.length}
+          </span>{" "}
+          video
+        </p>
 
-        <div className="flex items-center gap-2">
-          <Button
-            disabled={!canGoPrevious}
-            size="sm"
-            type="button"
-            variant="outline"
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
+        {totalPages > 0 ? (
+          <nav
+            aria-label="Phân trang video"
+            className="flex items-center gap-2"
           >
-            <ChevronLeft className="size-4" />
-            Trước
-          </Button>
+            <Button
+              disabled={!canGoPrevious}
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              <ChevronLeft className="size-4" />
+              Trước
+            </Button>
 
-          <span className="min-w-24 text-center text-(--admin-text-muted)">
-            Trang {currentPage}/{pageTotalLabel}
-          </span>
+            <span className="min-w-24 text-center text-(--admin-text-muted)">
+              Trang {currentPage}/{pageTotalLabel}
+            </span>
 
-          <Button
-            disabled={!canGoNext}
-            size="sm"
-            type="button"
-            variant="outline"
-            onClick={() => setPage((current) => current + 1)}
-          >
-            Sau
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
+            <Button
+              disabled={!canGoNext}
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Sau
+              <ChevronRight className="size-4" />
+            </Button>
+          </nav>
+        ) : null}
       </div>
 
       {isLoading ? (
@@ -636,24 +645,49 @@ export function VideosPage() {
         </div>
       ) : error ? (
         <VideosErrorState message={error} onRetry={() => void fetchVideos()} />
-      ) : !hasVideos && (hasAppliedSearch || hasAppliedFilterKey) ? (
+      ) : !hasVideos && hasActiveFilters ? (
         <section className="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-(--admin-border-strong) bg-(--admin-surface) px-6 py-10 text-center">
           <h2 className="text-lg font-semibold text-(--admin-text-strong)">
             Không có video phù hợp
           </h2>
           <p className="mt-2 max-w-md text-sm text-(--admin-text)">
-            Không có video nào khớp với tìm kiếm hoặc key đang lọc.
+            {hasAppliedSearch && hasAppliedFilterKey
+              ? "Không có video khớp với cả từ khóa tìm kiếm và key đang lọc."
+              : hasAppliedSearch
+                ? "Không có video khớp với từ khóa tìm kiếm."
+                : "Không có video khớp với key đang lọc."}
           </p>
-          {hasAppliedFilterKey ? (
-            <Button
-              className="mt-4"
-              type="button"
-              variant="outline"
-              onClick={handleClearFilterKey}
-            >
-              Xóa key lọc
-            </Button>
-          ) : null}
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {hasAppliedSearch ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClearSearch}
+              >
+                Xóa tìm kiếm
+              </Button>
+            ) : null}
+            {hasAppliedFilterKey ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClearFilterKey}
+              >
+                Xóa key lọc
+              </Button>
+            ) : null}
+          </div>
+        </section>
+      ) : !hasVideos && statusFilter !== DEFAULT_VIDEO_STATUS_FILTER ? (
+        <section className="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-(--admin-border-strong) bg-(--admin-surface) px-6 py-10 text-center">
+          <h2 className="text-lg font-semibold text-(--admin-text-strong)">
+            Không có video ở trạng thái này
+          </h2>
+          <p className="mt-2 max-w-md text-sm text-(--admin-text)">
+            Hiện chưa có video nào ở trạng thái “
+            {videoStatusLabels[statusFilter]}
+            ”.
+          </p>
         </section>
       ) : !hasVideos ? (
         <VideosEmptyState onCreate={() => setModalOpen(true)} />
@@ -673,108 +707,33 @@ export function VideosPage() {
         </div>
       )}
 
-      {statusActionVideo && statusActionTarget ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeStatusActionModal();
-            }
-          }}
-        >
-          <div
-            ref={statusModalRef}
-            aria-describedby="video-status-modal-description"
-            aria-labelledby="video-status-modal-title"
-            aria-modal="true"
-            className="relative w-full max-w-lg rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-(--admin-shadow)"
-            role="dialog"
-            onKeyDown={handleStatusModalKeyDown}
-          >
-            <Button
-              aria-label="Đóng"
-              className="absolute right-3 top-3 text-(--admin-text-muted)"
-              disabled={isStatusActionSubmitting}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-              onClick={closeStatusActionModal}
-            >
-              <X className="size-4" />
-            </Button>
-
-            <div className="flex gap-3 pr-8">
-              <div
-                className={[
-                  "flex size-10 shrink-0 items-center justify-center rounded-full",
-                  isStatusActionDisable
-                    ? "bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]"
-                    : "bg-[var(--admin-primary-soft)] text-[var(--admin-primary)]",
-                ].join(" ")}
-              >
-                {isStatusActionDisable ? (
-                  <Ban className="size-5" />
-                ) : (
-                  <RefreshCcw className="size-5" />
-                )}
-              </div>
-
-              <div className="min-w-0 space-y-2">
-                <h2
-                  className="text-lg font-semibold text-(--admin-text-strong)"
-                  id="video-status-modal-title"
-                >
-                  {statusActionTitle}
-                </h2>
-                <p className="break-words text-sm font-medium text-(--admin-text-strong)">
-                  {statusActionVideo.title}
-                </p>
-                <p
-                  className="text-sm leading-6 text-(--admin-text)"
-                  id="video-status-modal-description"
-                >
-                  {statusActionDescription}
-                </p>
-
-                {isStatusActionDisable ? (
-                  <div className="flex gap-2 rounded-lg border border-[var(--admin-danger-soft)] bg-[var(--admin-danger-soft)]/45 p-3 text-sm text-(--admin-text)">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--admin-danger)]" />
-                    <p>
-                      Disable không xoá file khỏi storage. Để giải phóng dung
-                      lượng NVMe, mở trang chi tiết video và dùng Purge
-                      Permanently.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button
-                ref={statusCancelButtonRef}
-                disabled={isStatusActionSubmitting}
-                type="button"
-                variant="outline"
-                onClick={closeStatusActionModal}
-              >
-                Huỷ
-              </Button>
-              <Button
-                disabled={isStatusActionSubmitting}
-                type="button"
-                variant={isStatusActionDisable ? "destructive" : "default"}
-                onClick={() => void handleConfirmStatusChange()}
-              >
-                {isStatusActionSubmitting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : null}
-                {statusActionConfirmLabel}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmActionDialog
+        confirmLabel={statusActionConfirmLabel}
+        description={
+          statusActionVideo ? (
+            <span className="block space-y-2">
+              <span className="block font-medium text-(--admin-text-strong)">
+                {statusActionVideo.title}
+              </span>
+              <span className="block">
+                {isStatusActionDisable
+                  ? "Video sẽ chuyển sang trạng thái DISABLED. Thao tác này chỉ ngừng sử dụng video trong hệ thống, không xóa metadata và không xóa file video/thumbnail khỏi server storage/NVMe. Muốn giải phóng dung lượng, hãy dùng Purge ở trang chi tiết video."
+                  : "Video sẽ trở lại trạng thái READY. Nếu video đang được gán vào website hoặc share link hợp lệ, video có thể hiển thị lại cho người xem theo quyền truy cập tương ứng."}
+              </span>
+            </span>
+          ) : null
+        }
+        isSubmitting={isStatusActionSubmitting}
+        open={statusActionVideo !== null && statusActionTarget !== null}
+        title={statusActionTitle}
+        variant={isStatusActionDisable ? "warning" : "default"}
+        onConfirm={handleConfirmStatusChange}
+        onOpenChange={(next) => {
+          if (!next) {
+            closeStatusActionModal();
+          }
+        }}
+      />
 
       {modalOpen ? (
         <Suspense

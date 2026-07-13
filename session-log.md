@@ -2,6 +2,81 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-13 — UX-3 videos list
+
+Controlled UI/UX upgrade, phase UX-3 (`/videos` list). Presentation, Vietnamese
+copy and accessibility only. No backend contract, data-fetching architecture,
+request/search/filter/pagination logic, or thumbnail loading changed. No new
+dependency; no `useVideosList` extraction; no new file created (inline was clearer
+than a heavily-coupled extraction).
+
+### Changed
+
+- `src/pages/VideosPage.tsx`:
+  - Migrated the hand-rolled status modal (custom overlay + `statusModalRef` +
+    `statusCancelButtonRef` + `handleStatusModalKeyDown` Tab-loop + focus timeout)
+    to the shared `ConfirmActionDialog`. Removed all that focus-trap code and the
+    now-unused `Ban`/`AlertTriangle`/`Loader2` icons and `KeyboardEvent` type. The
+    business state (`statusActionVideo`, `statusActionTarget`, `statusUpdatingVideoId`)
+    and handlers (`handleRequestStatusToggle`, `handleConfirmStatusChange`) are
+    unchanged; disable uses `updateVideoStatus(id,"DISABLED")`, restore uses
+    `"READY"`, and the single silent refetch after success is preserved.
+  - Header: `<h1>` "Quản lý video" + description; "Thêm video" / "Tải lại".
+  - Status tabs kept `role="tablist"`/`role="tab"`/`aria-selected`; active state no
+    longer color-only (adds `font-semibold` + visible ring on focus).
+  - Wrapped tabs + search + filter-key + active-filter chips into one bordered filter
+    surface. Added a clear-search button and removable filter chips ("Tìm kiếm: …",
+    "Key: …") wired to the existing `handleClearSearch`/`handleClearFilterKey` (no new
+    logic). Search still manual-submit, min 2, max 80, normalized; filter key still
+    manual-apply, datalist suggestions, reserved `all` blocked.
+  - Search/filter error moved to a `role="alert"` panel using `--admin-warning` /
+    `--admin-warning-soft` + `--admin-text-strong` (replaced hardcoded amber classes);
+    filter-key validation error uses `--admin-danger` (canonical token syntax).
+  - Empty states now differentiate: (a) no match for search, (b) no match for key,
+    (c) no match for search+key, (d) no video in a non-READY status (neutral, no
+    "add video" CTA), (e) truly empty READY list → `VideosEmptyState`. None claim data
+    was deleted.
+  - Pagination wrapped in `<nav aria-label>`; hidden when `totalPages === 0` to avoid a
+    misleading "Trang 1/1"; page clamp, prev/next conditions and disabled-on-load
+    behavior unchanged.
+- `src/features/videos/components/VideoCard.tsx`: styled the previously-unstyled status
+  toggle as a clear bordered icon button (accessible name kept, hover intent colour
+  differs for disable vs restore, focus ring). PROCESSING badge moved from hardcoded
+  amber to `--admin-warning`/`--admin-warning-soft`. DISABLED label aligned to "Đã vô
+  hiệu hóa". Thumbnail IntersectionObserver / object-URL lease / lazy loading / open +
+  status callbacks are untouched.
+- `src/features/videos/components/VideosEmptyState.tsx`: CTA "Thêm Video" → "Thêm video".
+- `VideosErrorState.tsx` and `VideoCardSkeleton.tsx` were already token-based and in
+  Vietnamese, so they were left unchanged.
+
+### Verified
+
+- `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build` all pass;
+  `git diff --check` clean; scoped Prettier check on all UX-3 files passes.
+- Invariant constants confirmed present and unchanged: `DEFAULT_VIDEO_STATUS_FILTER =
+READY`, min 2, max 80, `useState(20)`, `sortOrder: "desc"`; `fetchVideos` (abort +
+  request-version + silent refetch + page clamp) is byte-identical.
+- `grep` confirms no `statusModalRef`/`statusCancelButtonRef`/`handleStatusModalKeyDown`
+  and no custom status-modal overlay remain.
+- Bundle: VideosPage lazy chunk 21.06 → 21.87 kB raw (gzip 6.86 → 6.69); eager main
+  chunk flat (398.07 → 398.09 kB) — ConfirmActionDialog/Radix Dialog already bundled.
+- NOT browser-verified: no browser tooling is configured. The 20 interaction checks
+  (tabs, search/filter, pagination, silent refresh, open detail, disable/restore
+  confirm + error-keeps-dialog + double-click, lazy create modal, LOCAL_FILE thumbnail,
+  mobile/dark) were reasoned about statically but not exercised.
+
+### Pending
+
+- Browser verification of the full videos-list interaction set (20 checks above),
+  including disable/restore dialog, focus restore, double-click safety and LOCAL_FILE
+  thumbnail loading, is still pending (no browser tooling installed).
+- No real automated test suite exists; `yarn test` is still a placeholder `echo`.
+- `../../.prettierignore` (referenced by format scripts) is still missing/external;
+  deferred to UX-8.
+- DISABLED label is now "Đã vô hiệu hóa" on the videos list/card, but VideoDetailPage /
+  VideoInfoPanel still say "Đã tắt" (out of UX-3 scope) — align in UX-4.
+- UX-4 (Video Detail) not started.
+
 ## 2026-07-13 — UX-2 website and domain confirmations
 
 Controlled UI/UX upgrade, phase UX-2 (Websites/Domains destructive confirmations,
