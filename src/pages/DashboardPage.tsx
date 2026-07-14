@@ -40,6 +40,10 @@ const DASHBOARD_VIDEO_SEARCH_MAX_LENGTH = 80;
 const DASHBOARD_VIDEO_STATUS = "READY" as const;
 const DASHBOARD_VIDEO_SORT_BY = "createdAt" as const;
 const DASHBOARD_VIDEO_SORT_ORDER = "desc" as const;
+const DASHBOARD_VIDEO_SEARCH_ERROR_MESSAGE =
+  "Không thể tìm video lúc này. Vui lòng thử lại.";
+const DASHBOARD_VIDEO_FILTER_ERROR_MESSAGE =
+  "Không thể lọc video lúc này. Vui lòng thử lại.";
 
 export function DashboardPage() {
   const adminId = useAppSelector((state) => state.auth.admin?.id);
@@ -100,7 +104,7 @@ export function DashboardPage() {
           return nextWebsites[0]?.id ?? "";
         });
 
-        return false;
+        return true;
       } catch (fetchError) {
         setWebsiteError(getWebsiteApiErrorMessage(fetchError));
         return false;
@@ -186,9 +190,15 @@ export function DashboardPage() {
         }
 
         if (videoDatasetVersionRef.current === requestVersion) {
-          const message = getWebsiteApiErrorMessage(fetchError);
+          const hasScopedVideoQuery =
+            normalizedSearch.length > 0 || normalizedFilterKey.length > 0;
+          const message = normalizedSearch
+            ? DASHBOARD_VIDEO_SEARCH_ERROR_MESSAGE
+            : normalizedFilterKey
+              ? DASHBOARD_VIDEO_FILTER_ERROR_MESSAGE
+              : getWebsiteApiErrorMessage(fetchError);
 
-          if (hasLoadedVideosRef.current) {
+          if (hasLoadedVideosRef.current || hasScopedVideoQuery) {
             setVideoSearchError(message);
           } else {
             setVideoError(message);
@@ -310,7 +320,11 @@ export function DashboardPage() {
       }
 
       if (videoDatasetVersionRef.current === requestVersion) {
-        const message = getWebsiteApiErrorMessage(fetchError);
+        const message = debouncedVideoSearch
+          ? DASHBOARD_VIDEO_SEARCH_ERROR_MESSAGE
+          : debouncedVideoFilterKey
+            ? DASHBOARD_VIDEO_FILTER_ERROR_MESSAGE
+            : getWebsiteApiErrorMessage(fetchError);
         setVideoSearchError(message);
       }
     } finally {

@@ -2,6 +2,99 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-10 — Verify CreateVideoModal filterKey in a clean local runtime
+
+### Root Cause
+
+- Current Admin Web source and the freshly served Vite module already send normalized `filterKey` for create flows; the issue was stale/inconsistent local runtime or browser state rather than missing form/API-client code.
+- All stale Node processes were stopped, the Vite dependency cache was cleared, and Admin Web was rebuilt and restarted from this repository against the intended local API.
+- The original pre-clean browser request was not available, so the stale process versus stale browser lazy-chunk boundary cannot be identified more narrowly without guessing.
+
+### Runtime Evidence
+
+- A fresh headless Chrome session logged in through the real UI and submitted `CreateVideoModal` in embed mode with `filterKey=sml`.
+- The actual browser create request contained `filterKey: "sml"` and returned `201` with the same key.
+- The following video detail and list responses both contained `filterKey: "sml"`.
+- `VideoInfoPanel` displayed `sml` immediately; opening `EditVideoModal` was not required.
+- The temporary smoke video was disabled and purged after verification.
+
+### Changed
+
+- No Admin Web implementation code was changed in this runtime pass because the actual create request and UI response path passed after clean startup.
+- Updated this session log with the runtime diagnosis and clean-start procedure.
+
+### Verified
+
+- `yarn typecheck` passed.
+- `yarn lint` passed.
+- `yarn format:check` passed.
+- `yarn build` passed.
+- `yarn test` ran the existing placeholder script successfully.
+- Vite started from `C:\Users\Administrator\Desktop\code\bom-media-admin` on port 5173 and used the configured local API.
+
+### Pending
+
+- Existing browser tabs should be hard-refreshed or have local site data cleared before retesting.
+- Deploy the backend API and its `filterKey` migration before any Admin Web production deployment if production has not yet received them.
+
+## 2026-07-10 — Audit CreateVideoModal filterKey persistence
+
+### Confirmed
+
+- `CreateVideoModal` registers and normalizes `filterKey` and includes it for manual, embed, and LOCAL_FILE modes.
+- The API client preserves the key in JSON create payloads, multipart `FormData`, and LOCAL_FILE init metadata.
+- The deployed Admin Web lazy Create Video/API chunks contain the same `filterKey` payload behavior.
+- Current Admin Web source therefore required no create-payload code change; the production symptom is on the deployed API create path/runtime rather than the current form or API client.
+
+### Files Changed
+
+- `session-log.md`
+
+### Verified
+
+- Backend end-to-end local HTTP smoke confirmed manual, embed, multipart, and LOCAL_FILE create responses/details/lists retain their normalized keys.
+- Existing edit payload still sends a normalized key or `null` when clearing.
+- `yarn typecheck` passed.
+- `yarn lint` passed.
+- `yarn format:check` passed.
+- `yarn build` passed.
+- `yarn test` ran the existing placeholder script successfully.
+- `git diff --check` passed and no npm/pnpm lockfiles were found.
+
+### Pending
+
+- Deploy the current backend API and pending Prisma migrations, restart the API, then repeat production create/detail/list checks.
+- Browser Network verification should confirm the production create request contains `filterKey` and the create response returns the same value.
+
+## 2026-07-10 — Harden Dashboard production video search errors
+
+### Changed
+
+- Preserved the existing 400 ms debounce, two-character minimum, AbortController cancellation, request-version guard, cache behavior, load more, and selected-video behavior.
+- Kept previously loaded videos visible when a search or filter request fails.
+- Changed active search failures to the scoped inline message `Không thể tìm video lúc này. Vui lòng thử lại.` and active key-filter failures to `Không thể lọc video lúc này. Vui lòng thử lại.`.
+- Ensured active search/filter failures render in the video picker retry area even when the initial default dataset has not completed, instead of escalating them into a full Dashboard error.
+- Fixed successful website loading to return `true`, so manual Dashboard refresh can correctly report success when both website and video reloads succeed.
+
+### Files Changed
+
+- `src/pages/DashboardPage.tsx`
+- `session-log.md`
+
+### Verified
+
+- `yarn typecheck` passed.
+- `yarn lint` passed.
+- `yarn format:check` passed.
+- `yarn build` passed.
+- `yarn test` ran the existing placeholder script successfully.
+- `git diff --check` passed; no npm/pnpm lockfiles were found.
+
+### Pending
+
+- Manual browser verification against the deployed current API: refresh Dashboard, search `jeffy`, case variants and no-result terms, clear search, retry a simulated failure, and use manual `Tải lại`.
+- Deploy/restart the backend API before the Admin Web build. If production search still returns `500`, capture the sanitized backend exception/Prisma code; Admin Web cannot determine the database-side cause.
+
 ## 2026-07-04 — Admin Web video filterKey UI
 
 ### Changed
