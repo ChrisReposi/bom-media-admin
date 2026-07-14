@@ -13,16 +13,26 @@ yarn typecheck
 yarn lint
 yarn format:check
 yarn build
+yarn smoke:build
 find . -maxdepth 3 \( -name package-lock.json -o -name pnpm-lock.yaml \) -print
 ```
 
 Expected:
 
 ```txt
-typecheck/lint/format/build pass
+typecheck/lint/format/build/smoke:build pass
 no package-lock.json
 no pnpm-lock.yaml
 ```
+
+`yarn smoke:build` is a **static** check of the `dist/` output only (files present,
+referenced assets resolve, no source maps, no leaked sensitive files). It does **not**
+exercise the UI or the backend and does **not** replace browser smoke testing.
+
+Before a production release, the manual browser checklist in
+`docs/14_ADMIN_WEB_UX_SMOKE_TEST.md` must be run and recorded against a deployed/local
+backend. Do not mark UX flows as passed unless they were actually exercised in a
+browser.
 
 If this app is run from a monorepo workspace, use:
 

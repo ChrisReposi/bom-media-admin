@@ -2,6 +2,77 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-13 — UX-8 verification and smoke hardening
+
+Final controlled phase: repository hardening, dependency cleanup, static build smoke
+test, and manual browser smoke checklist. No business logic and no page/component UI
+changed.
+
+### Changed
+
+- Added repo-local `.prettierignore` (node_modules, dist, coverage, .vite, minified
+  files) and pointed the `format` / `format:check` scripts at `.prettierignore` instead
+  of the missing external `../../.prettierignore`. Format globs are otherwise unchanged;
+  no mass-format.
+- Framer Motion audit: the only remaining consumer was `MotionConfig` in `src/main.tsx`
+  (UX-6 had already removed every `motion.*` / `AnimatePresence`). With no motion
+  components left, `MotionConfig` was inert (reduced motion for the app's CSS animations
+  is handled by Tailwind `motion-reduce:` variants). Removed the `MotionConfig`
+  import/wrapper from `main.tsx` (kept `StrictMode`, `AppProviders`, root render and
+  bootstrap order) and ran `yarn remove framer-motion`. Only `src/main.tsx`,
+  `package.json` and `yarn.lock` changed for this step; a repo grep confirms no
+  `framer-motion` / `MotionConfig` / `motion.` references remain in `src`/`package.json`.
+- Added `scripts/smoke/admin-web-build-smoke.mjs` (Node built-ins only) and the
+  `smoke:build` script; extended `check` to run it. The smoke script verifies dist/
+  shape (index.html, `.htaccess` at root and `assets/`, ≥1 JS asset, CSS asset,
+  referenced `/assets/*` resolve, no `%VITE_*%` placeholders, no public source maps, no
+  leaked sensitive files). It prints only names/counts — never file contents, tokens or
+  secrets.
+- Added `docs/14_ADMIN_WEB_UX_SMOKE_TEST.md` — a manual browser checklist with an
+  environment table, sections A–K (app shell, login, dashboard, videos, video detail,
+  websites/domains, settings, security, static cross-reference, failures) and a strict
+  result vocabulary (`PASS`/`FAIL`/`BLOCKED`/`NOT_RUN`/`NOT_APPLICABLE`; no "assumed
+  pass").
+- Updated `docs/12` (added `yarn smoke:build`; clarified it is static-only and does not
+  replace the browser checklist; linked `docs/14` as a release gate), `docs/07` (added
+  `yarn smoke:build passed` and `UX browser smoke test recorded` gates plus the command),
+  and `README.md` (listed doc 14, described it, documented `yarn smoke:build`).
+
+### Verified
+
+- `yarn typecheck`, `yarn lint`, `yarn format:check` (now using local `.prettierignore`),
+  `yarn build`, `yarn smoke:build` (10/10 checks), and `yarn check` all pass;
+  `git diff --check` clean; scoped Prettier on all touched files passes; no lockfiles.
+- Bundle after removing framer-motion: eager index chunk 397.50 → 396.28 kB raw (gzip
+  126.80 → 126.19). The delta is small because a bare `MotionConfig` already tree-shook
+  to almost nothing — the large win (LoginPage 131 → 5 kB) was realized in UX-6. This
+  step is primarily dependency hygiene (an unused package removed from the tree).
+- HTTP / deep-route smoke via `yarn preview:local` + `curl` (then the preview process was
+  stopped): `/`, `/login`, `/videos`, `/websites`, `/domains`, `/settings`,
+  `/videos/example-id`, and an unknown route all return `200 text/html` (Vite preview SPA
+  fallback serving the app shell with `<div id="root">`); the referenced JS/CSS assets
+  return correct content types (`text/javascript`, `text/css`). Note: Vite preview also
+  returns `200` for a non-existent `/assets/*.js` (its SPA fallback), so preview cannot
+  validate the asset-vs-route distinction — the production Hostinger `.htaccess` handles
+  that via its extension rewrite condition. This is an HTTP smoke only; it does **not**
+  prove the React auth-guard/404 UI rendered.
+- Browser/test tooling audit: no Playwright/Cypress/Vitest/Jest config in-repo and no
+  test runner installed. No test framework was added. Automated browser tests were not
+  run and are not claimed to pass.
+
+### Pending
+
+- The manual browser checklist (`docs/14`) has **not** been run — no browser tooling; it
+  is a handoff for a human tester against a deployed/local backend.
+- Backend/API flows remain unverified here: logout revoke, password change, refresh
+  rotation, LOCAL_FILE upload/preview/purge, share-link creation/revoke, rate limits.
+- No real automated unit/integration/E2E test suite exists; `yarn test` is still a
+  placeholder `echo` and must not be described as a test suite.
+- External production operations remain outstanding: Cloudflare Access/WAF, Swagger
+  protection, secret rotation, backup/restore drill, monitoring.
+- Share-link history/revoke UI (API already exists) remains a separate frontend backlog
+  item; not built in this phase.
+
 ## 2026-07-13 — UX-7 evidence readiness gap analysis
 
 Documentation-only phase. No source code, routes, or UI changed.

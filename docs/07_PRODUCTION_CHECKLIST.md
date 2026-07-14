@@ -65,6 +65,8 @@ docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
 - [ ] Admin API and authenticated media responses are not publicly cached.
 - [ ] No secrets in built files.
 - [ ] Build passes.
+- [ ] `yarn smoke:build` passed (static dist-output check).
+- [ ] UX browser smoke test recorded using `docs/14_ADMIN_WEB_UX_SMOKE_TEST.md`.
 
 ### Public Sites
 
@@ -134,6 +136,7 @@ yarn typecheck
 yarn lint
 yarn format:check
 yarn build
+yarn smoke:build
 ```
 
 Workspace:

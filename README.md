@@ -49,11 +49,15 @@ docs/
   11_INCIDENT_RESPONSE.md
   12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
   13_ADMIN_EVIDENCE_READINESS_GAP_ANALYSIS.md
+  14_ADMIN_WEB_UX_SMOKE_TEST.md
 ```
 
 `docs/13_ADMIN_EVIDENCE_READINESS_GAP_ANALYSIS.md`: Phân tích dữ liệu hiện có,
 khoảng trống backend/API và lộ trình xây dựng hồ sơ vận hành có provenance và
 auditability.
+
+`docs/14_ADMIN_WEB_UX_SMOKE_TEST.md`: Checklist kiểm tra trình duyệt cho app shell,
+auth, Dashboard, video, website/domain, Settings và các ranh giới token/security.
 
 ## Ghi chú quan trọng
 
@@ -74,3 +78,13 @@ docs/12_ADMIN_WEB_PRODUCTION_SMOKE_TEST.md
 ```
 
 The checklist covers build output, public Vite env, auth/logout/refresh behavior, protected routes, key feature screens, Cloudflare checks, Swagger exposure, and public mini-admin absence checks.
+
+Static build-output smoke check (dist files present, referenced assets resolve, no
+source maps, no leaked sensitive files):
+
+```bash
+yarn smoke:build
+```
+
+`yarn smoke:build` is a static check only. The manual browser checklist in
+`docs/14_ADMIN_WEB_UX_SMOKE_TEST.md` must still be run before a production release.

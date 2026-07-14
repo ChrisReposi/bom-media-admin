@@ -1,7 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { MotionConfig } from "framer-motion";
 import { AppProviders } from "./app/providers";
 import "./styles/globals.css";
 import "@fontsource-variable/google-sans/wght.css";
@@ -14,8 +13,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <MotionConfig reducedMotion={import.meta.env.PROD ? "user" : "never"}>
-      <AppProviders />
-    </MotionConfig>
+    <AppProviders />
   </StrictMode>,
 );
