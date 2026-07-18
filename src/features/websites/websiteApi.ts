@@ -12,6 +12,7 @@ import type {
   AssignWebsiteVideosPayload,
   ClaimCurrentWebsiteDomainPayload,
   CreateShareLinkPayload,
+  CanonicalShareLinkResponse,
   CreateShareLinkResponse,
   CreateWebsiteDomainPayload,
   CreateWebsitePayload,
@@ -305,6 +306,28 @@ export async function createShareLink(
   );
 
   return normalizeCreateShareLinkResponse(response.data);
+}
+
+export async function createCanonicalShareLink(
+  websiteId: string,
+  videoId: string,
+): Promise<CanonicalShareLinkResponse> {
+  const response = await axiosClient.post<CanonicalShareLinkResponse>(
+    `/admin/websites/${websiteId}/videos/${encodeURIComponent(videoId)}/canonical-share-link`,
+  );
+
+  return response.data;
+}
+
+export async function getCanonicalShareLink(
+  websiteId: string,
+  videoId: string,
+): Promise<CanonicalShareLinkResponse> {
+  const response = await axiosClient.get<CanonicalShareLinkResponse>(
+    `/admin/websites/${websiteId}/videos/${encodeURIComponent(videoId)}/canonical-share-link`,
+  );
+
+  return response.data;
 }
 
 export async function getShareLinks(

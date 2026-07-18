@@ -1,5 +1,9 @@
+// Optional-chained through `env` so the module stays importable under plain
+// Node (tests) where import.meta.env does not exist.
 const PUBLIC_SHARE_BASE_URL =
-  import.meta.env.VITE_PUBLIC_SHARE_BASE_URL?.trim() || "";
+  (
+    import.meta as { env?: { VITE_PUBLIC_SHARE_BASE_URL?: string } }
+  ).env?.VITE_PUBLIC_SHARE_BASE_URL?.trim() || "";
 
 type ShareRouteParts = {
   code: string;

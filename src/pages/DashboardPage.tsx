@@ -37,17 +37,23 @@ import {
 import { isShareableVideo } from "@/features/videos/videoSourceUtils";
 import type { VideoAsset } from "@/features/videos/videoTypes";
 import {
+  createCanonicalShareLink,
   createShareLink,
   assignSingleWebsiteVideo,
   getWebsiteVideos,
   getWebsiteApiErrorMessage,
   getWebsites,
 } from "@/features/websites/websiteApi";
+import {
+  getCanonicalErrorMessage,
+  getCanonicalOutcomeToast,
+} from "@/features/websites/canonicalShareLinkPolicy";
 import type {
+  CanonicalShareLinkResponse,
   CreateShareLinkResponse,
   Website,
 } from "@/features/websites/websiteTypes";
-import { isApiRequestCanceled } from "@/lib/api/apiError";
+import { isApiRequestCanceled, normalizeApiError } from "@/lib/api/apiError";
 import { useAppSelector } from "@/store/hooks";
 
 const DASHBOARD_VIDEO_PAGE_SIZE = 24;
@@ -85,6 +91,8 @@ export function DashboardPage() {
     useState<VideoSelectionMode>(DEFAULT_VIDEO_SELECTION_MODE);
   const [createdShareLink, setCreatedShareLink] =
     useState<CreateShareLinkResponse | null>(null);
+  const [canonicalResult, setCanonicalResult] =
+    useState<CanonicalShareLinkResponse | null>(null);
   const [hasLoadedWebsites, setHasLoadedWebsites] = useState(false);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -322,6 +330,7 @@ export function DashboardPage() {
     videoRequestAbortRef.current = null;
     setSelectedVideoIds([]);
     setCreatedShareLink(null);
+    setCanonicalResult(null);
     setIsLoadingMoreVideos(false);
     setVideoSearchError(null);
   }, [selectedWebsiteId]);
@@ -554,6 +563,31 @@ export function DashboardPage() {
 
     setIsSubmitting(true);
     setCreatedShareLink(null);
+    setCanonicalResult(null);
+
+    if (videoSelectionMode === "single" && selectedVideoIds.length === 1) {
+      try {
+        const canonical = await createCanonicalShareLink(
+          selectedWebsiteId,
+          selectedVideoIds[0],
+        );
+        setCanonicalResult(canonical);
+        toast.success(getCanonicalOutcomeToast(canonical.outcome));
+        await copyPublicUrl(canonical.publicUrl);
+      } catch (canonicalError) {
+        const normalized = normalizeApiError(canonicalError);
+        toast.error(
+          getCanonicalErrorMessage(
+            normalized.code,
+            getWebsiteApiErrorMessage(canonicalError),
+          ),
+        );
+      } finally {
+        setIsSubmitting(false);
+        shareLinkSubmissionGateRef.current.release();
+      }
+      return;
+    }
 
     try {
       const response = await createShareLink(selectedWebsiteId, {
@@ -735,6 +769,7 @@ export function DashboardPage() {
           onWebsiteChange={handleWebsiteChange}
           onOpenAssignment={() => setIsAssignmentDialogOpen(true)}
           createdShareLink={createdShareLink}
+          canonicalResult={canonicalResult}
         />
       ) : null}
 

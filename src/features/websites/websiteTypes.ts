@@ -165,6 +165,30 @@ export type ShareLinksListResponse = {
   items: ShareLink[];
 };
 
+export type CanonicalEvidenceSnapshotSummary = {
+  videoId?: string;
+  sourceType?: string;
+  title?: string;
+  durationSeconds?: number | null;
+  checksumSha256?: string | null;
+  snapshotAt?: string;
+} & Record<string, unknown>;
+
+export type CanonicalShareLinkResponse = {
+  message: string;
+  outcome: "CREATED" | "REUSED";
+  isCanonical: true;
+  evidenceDrift: boolean;
+  shareLink: ShareLink;
+  /** Byte-for-byte stable canonical URL — display verbatim, never rebuild. */
+  publicUrl: string;
+  alias: string;
+  /** Present only on outcome CREATED; never recoverable afterwards. */
+  rawToken?: string;
+  evidenceSnapshot: CanonicalEvidenceSnapshotSummary | null;
+  canonicalCreatedAt: string;
+};
+
 export type CreateShareLinkResponse = {
   message: string;
   shareLink: ShareLink;

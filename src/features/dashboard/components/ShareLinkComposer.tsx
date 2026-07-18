@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { VideoAsset } from "@/features/videos/videoTypes";
 import type {
+  CanonicalShareLinkResponse,
   CreateShareLinkResponse,
   Website,
 } from "@/features/websites/websiteTypes";
@@ -16,6 +17,7 @@ import type { VideoSelectionMode } from "../dashboardSelectionPolicy";
 import { ReadyVideoPicker } from "./ReadyVideoPicker";
 import { WebsiteQuickSelect } from "./WebsiteQuickSelect";
 import { CreatedShareLinkCard } from "./CreatedShareLinkCard";
+import { CanonicalShareLinkCard } from "./CanonicalShareLinkCard";
 
 type ShareLinkComposerProps = {
   websites: Website[];
@@ -45,6 +47,7 @@ type ShareLinkComposerProps = {
   onOpenAssignment: () => void;
   onSubmit: (payload: ShareLinkComposerPayload) => Promise<void>;
   createdShareLink: CreateShareLinkResponse | null;
+  canonicalResult: CanonicalShareLinkResponse | null;
 };
 
 const adminInputClass = [
@@ -94,7 +97,9 @@ export function ShareLinkComposer({
   onOpenAssignment,
   onSubmit,
   createdShareLink,
+  canonicalResult,
 }: ShareLinkComposerProps) {
+  const isCanonicalMode = videoSelectionMode === "single";
   const [label, setLabel] = useState("");
   const [maxViews, setMaxViews] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -349,16 +354,34 @@ export function ShareLinkComposer({
               ) : (
                 <Link2 className="size-4" />
               )}
-              {isSubmitting ? "Đang tạo..." : "Tạo share link"}
+              {isSubmitting
+                ? "Đang xử lý..."
+                : isCanonicalMode
+                  ? "Lấy URL canonical"
+                  : "Tạo review bundle"}
             </Button>
           </div>
+
+          {isCanonicalMode ? (
+            <p className="mb-4 text-sm text-(--admin-text-muted)">
+              Chế độ một video trả về URL canonical ổn định cho cặp
+              website–video: gọi lại luôn nhận đúng cùng một URL. URL canonical
+              không dùng nhãn, giới hạn lượt xem hay thời hạn.
+            </p>
+          ) : (
+            <p className="mb-4 text-sm text-(--admin-text-muted)">
+              Bundle link không phải canonical source URL riêng của từng video.
+            </p>
+          )}
 
           <div className="grid gap-4 md:grid-cols-3">
             <label className="block text-sm font-medium text-(--admin-text-strong)">
               <span className="mb-2 block">Nhãn</span>
               <Input
                 id="labelInput"
+                name="shareLinkLabel"
                 className={adminInputClass}
+                disabled={isCanonicalMode}
                 placeholder="Ví dụ: Gửi cho khách hàng A"
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
@@ -369,7 +392,9 @@ export function ShareLinkComposer({
               <span className="mb-2 block">Giới hạn lượt xem</span>
               <Input
                 id="maxViewsInput"
+                name="shareLinkMaxViews"
                 className={adminInputClass}
+                disabled={isCanonicalMode}
                 min={1}
                 placeholder="Không giới hạn"
                 type="number"
@@ -382,7 +407,9 @@ export function ShareLinkComposer({
               <span className="mb-2 block">Thời hạn</span>
               <Input
                 id="expiresAtInput"
+                name="shareLinkExpiresAt"
                 className={adminInputClass}
+                disabled={isCanonicalMode}
                 type="datetime-local"
                 value={expiresAt}
                 onChange={(event) => setExpiresAt(event.target.value)}
@@ -399,7 +426,15 @@ export function ShareLinkComposer({
           ) : null}
         </section>
 
-        {createdShareLink ? (
+        {canonicalResult ? (
+          <CanonicalShareLinkCard
+            result={canonicalResult}
+            websiteName={
+              websites.find((website) => website.id === selectedWebsiteId)
+                ?.name ?? null
+            }
+          />
+        ) : createdShareLink ? (
           <CreatedShareLinkCard shareLink={createdShareLink} />
         ) : null}
       </div>
