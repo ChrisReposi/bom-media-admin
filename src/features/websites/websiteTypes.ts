@@ -104,6 +104,34 @@ export type AssignWebsiteVideosPayload = {
   featuredVideoId?: string;
 };
 
+export type AssignmentStatus = "ACTIVE" | "DISABLED";
+
+export type WebsiteVideoAssignment = {
+  id: string;
+  websiteId: string;
+  videoId: string;
+  sortOrder: number;
+  isFeatured: boolean;
+  status: AssignmentStatus;
+  videoTitle: string;
+  videoStatus: VideoAsset["status"];
+  thumbnailUrl: string | null;
+  playbackUrl: string | null;
+  video: VideoAsset;
+};
+
+export type WebsiteVideosListResponse = {
+  items: WebsiteVideoAssignment[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    activeAssignmentTotal: number;
+    eligibleAssignmentTotal: number;
+  };
+};
+
 export type CreateShareLinkPayload = {
   label?: string;
   videoIds?: string[];

@@ -105,10 +105,16 @@ export function DomainFormModal({
         </div>
 
         <form className="grid gap-4" onSubmit={handleSubmit}>
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="domain-form-domain"
+          >
             <span className="mb-2 block">Domain</span>
             <Input
+              aria-describedby="domain-form-domain-hint"
               className={inputClass}
+              id="domain-form-domain"
+              name="domainFormDomain"
               placeholder="127.0.0.1:5500"
               required
               value={form.domain}
@@ -128,16 +134,24 @@ export function DomainFormModal({
                 }))
               }
             />
-            <span className="mt-2 block text-xs font-normal text-(--admin-text-muted)">
+            <span
+              className="mt-2 block text-xs font-normal text-(--admin-text-muted)"
+              id="domain-form-domain-hint"
+            >
               Enter host only, without http:// or paths. Local testing hosts
               must match exactly, e.g. 127.0.0.1:5500.
             </span>
           </label>
 
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="domain-form-group-key"
+          >
             <span className="mb-2 block">Domain group</span>
             <select
               className={inputClass}
+              id="domain-form-group-key"
+              name="domainFormGroupKey"
               value={form.domainGroupKey}
               onChange={(event) =>
                 setForm((current) => ({
@@ -155,10 +169,15 @@ export function DomainFormModal({
             </select>
           </label>
 
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="domain-form-status"
+          >
             <span className="mb-2 block">Status</span>
             <select
               className={inputClass}
+              id="domain-form-status"
+              name="domainFormStatus"
               value={form.status}
               onChange={(event) =>
                 setForm((current) => ({

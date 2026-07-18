@@ -9,6 +9,7 @@ import type { Website } from "@/features/websites/websiteTypes";
 
 type WebsiteDomainPanelProps = {
   website: Website | null;
+  canWrite: boolean;
   availableDomains: DomainPoolItem[];
   isLoadingDomains: boolean;
   isSubmitting: boolean;
@@ -35,6 +36,7 @@ const optionClass =
 
 export function WebsiteDomainPanel({
   website,
+  canWrite,
   availableDomains,
   isLoadingDomains,
   isSubmitting,
@@ -61,7 +63,7 @@ export function WebsiteDomainPanel({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedDomainId) return;
+    if (!canWrite || !selectedDomainId) return;
 
     await onAssignDomain({
       domainId: selectedDomainId,
@@ -106,16 +108,18 @@ export function WebsiteDomainPanel({
                     {currentDomain.isPrimary ? " · Primary" : ""}
                   </p>
                 </div>
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                  onClick={() => void onUnassignDomain(currentDomain.id)}
-                >
-                  <Link2Off className="size-4" />
-                  Unassign
-                </Button>
+                {canWrite ? (
+                  <Button
+                    disabled={isSubmitting}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    onClick={() => void onUnassignDomain(currentDomain.id)}
+                  >
+                    <Link2Off className="size-4" />
+                    Unassign
+                  </Button>
+                ) : null}
               </div>
             ) : (
               <p className="text-sm text-(--admin-text-muted)">
@@ -124,62 +128,76 @@ export function WebsiteDomainPanel({
             )}
           </div>
 
-          <form className="grid gap-3" onSubmit={handleSubmit}>
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
-              <span className="mb-2 block">Available domain</span>
-              <select
-                className={selectClass}
-                disabled={isLoadingDomains}
-                value={selectedDomainId}
-                onChange={(event) => setSelectedDomainId(event.target.value)}
+          {canWrite ? (
+            <form className="grid gap-3" onSubmit={handleSubmit}>
+              <label
+                className="block text-sm font-medium text-(--admin-text-strong)"
+                htmlFor="website-domain-available"
               >
-                <option className={optionClass} value="">
-                  {isLoadingDomains
-                    ? "Loading available domains..."
-                    : "Select available domain"}
-                </option>
-
-                {availableDomains.map((domain) => (
-                  <option
-                    className={optionClass}
-                    key={domain.id}
-                    value={domain.id}
-                  >
-                    {domain.domain}
-                    {domain.domainGroup ? ` · ${domain.domainGroup.key}` : ""}
+                <span className="mb-2 block">Available domain</span>
+                <select
+                  className={selectClass}
+                  disabled={isLoadingDomains}
+                  id="website-domain-available"
+                  name="websiteDomainAvailable"
+                  value={selectedDomainId}
+                  onChange={(event) => setSelectedDomainId(event.target.value)}
+                >
+                  <option className={optionClass} value="">
+                    {isLoadingDomains
+                      ? "Loading available domains..."
+                      : "Select available domain"}
                   </option>
-                ))}
-              </select>
-            </label>
 
-            {currentDomain ? (
-              <label className="flex items-start gap-2 rounded-md border border-(--admin-warning-soft) bg-(--admin-warning-soft) p-2 text-sm text-(--admin-text)">
-                <input
-                  checked={replaceExisting}
-                  className="mt-1"
-                  type="checkbox"
-                  onChange={(event) => setReplaceExisting(event.target.checked)}
-                />
-                <span>
-                  Replace the current domain. The old domain becomes available
-                  in the domain pool.
-                </span>
+                  {availableDomains.map((domain) => (
+                    <option
+                      className={optionClass}
+                      key={domain.id}
+                      value={domain.id}
+                    >
+                      {domain.domain}
+                      {domain.domainGroup ? ` · ${domain.domainGroup.key}` : ""}
+                    </option>
+                  ))}
+                </select>
               </label>
-            ) : null}
 
-            <Button
-              className="self-start"
-              disabled={
-                isSubmitting ||
-                !selectedDomainId ||
-                (currentDomain !== null && !replaceExisting)
-              }
-              type="submit"
-            >
-              <Send className="size-4" />
-              {currentDomain ? "Replace domain" : "Assign domain"}
-            </Button>
-          </form>
+              {currentDomain ? (
+                <label
+                  className="flex items-start gap-2 rounded-md border border-(--admin-warning-soft) bg-(--admin-warning-soft) p-2 text-sm text-(--admin-text)"
+                  htmlFor="website-domain-replace-existing"
+                >
+                  <input
+                    checked={replaceExisting}
+                    className="mt-1"
+                    id="website-domain-replace-existing"
+                    name="websiteDomainReplaceExisting"
+                    type="checkbox"
+                    onChange={(event) =>
+                      setReplaceExisting(event.target.checked)
+                    }
+                  />
+                  <span>
+                    Replace the current domain. The old domain becomes available
+                    in the domain pool.
+                  </span>
+                </label>
+              ) : null}
+
+              <Button
+                className="self-start"
+                disabled={
+                  isSubmitting ||
+                  !selectedDomainId ||
+                  (currentDomain !== null && !replaceExisting)
+                }
+                type="submit"
+              >
+                <Send className="size-4" />
+                {currentDomain ? "Replace domain" : "Assign domain"}
+              </Button>
+            </form>
+          ) : null}
         </div>
       )}
     </section>

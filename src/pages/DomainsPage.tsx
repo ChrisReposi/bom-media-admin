@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmActionDialog } from "@/components/common/ConfirmActionDialog";
+import { AdminReadOnlyNotice } from "@/components/common/AdminReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAdminPermission } from "@/features/auth/useAdminPermission";
 import { AssignDomainModal } from "@/features/domains/components/AssignDomainModal";
 import { DomainCard } from "@/features/domains/components/DomainCard";
 import { DomainFormModal } from "@/features/domains/components/DomainFormModal";
@@ -82,6 +84,7 @@ type PendingDomainAction =
   | null;
 
 export function DomainsPage() {
+  const canWriteDomains = useAdminPermission("domain.write");
   const [activeTab, setActiveTab] = useState<DomainsTab>("domains");
   const [domains, setDomains] = useState<DomainPoolItem[]>([]);
   const [domainGroups, setDomainGroups] = useState<DomainGroup[]>([]);
@@ -109,6 +112,28 @@ export function DomainsPage() {
     () => domainGroups.filter((group) => group.status === "ACTIVE"),
     [domainGroups],
   );
+
+  useEffect(() => {
+    if (canWriteDomains) {
+      return;
+    }
+
+    setDomainModalOpen(false);
+    setGroupModalOpen(false);
+    setEditingDomain(null);
+    setEditingGroup(null);
+    setAssigningDomain(null);
+    setPendingDomainAction(null);
+  }, [canWriteDomains]);
+
+  function requireDomainWrite(): boolean {
+    if (canWriteDomains) {
+      return true;
+    }
+
+    toast.error("Bạn không có quyền thay đổi tên miền.");
+    return false;
+  }
 
   const fetchDomainData = useCallback(async () => {
     setIsLoading(true);
@@ -162,6 +187,7 @@ export function DomainsPage() {
   async function handleDomainSubmit(
     payload: CreateDomainPayload | UpdateDomainPayload,
   ): Promise<void> {
+    if (!requireDomainWrite()) return;
     setIsSubmitting(true);
 
     try {
@@ -186,6 +212,7 @@ export function DomainsPage() {
   async function handleDomainGroupSubmit(
     payload: CreateDomainGroupPayload | UpdateDomainGroupPayload,
   ): Promise<void> {
+    if (!requireDomainWrite()) return;
     setIsSubmitting(true);
 
     try {
@@ -211,6 +238,7 @@ export function DomainsPage() {
     websiteId: string;
     replaceExisting?: boolean;
   }): Promise<void> {
+    if (!requireDomainWrite()) return;
     if (!assigningDomain) return;
 
     setIsSubmitting(true);
@@ -228,6 +256,7 @@ export function DomainsPage() {
   }
 
   function handleDisableDomain(domain: DomainPoolItem): void {
+    if (!requireDomainWrite()) return;
     setPendingDomainAction({ type: "disable-domain", domain });
   }
 
@@ -246,6 +275,7 @@ export function DomainsPage() {
   }
 
   async function handleActivateDomain(domain: DomainPoolItem): Promise<void> {
+    if (!requireDomainWrite()) return;
     setIsSubmitting(true);
     try {
       await activateDomain(domain.id);
@@ -259,6 +289,7 @@ export function DomainsPage() {
   }
 
   function handleUnassignDomain(domain: DomainPoolItem): void {
+    if (!requireDomainWrite()) return;
     setPendingDomainAction({ type: "unassign-domain", domain });
   }
 
@@ -277,6 +308,7 @@ export function DomainsPage() {
   }
 
   function handleDisableGroup(group: DomainGroup): void {
+    if (!requireDomainWrite()) return;
     setPendingDomainAction({ type: "disable-group", group });
   }
 
@@ -295,6 +327,11 @@ export function DomainsPage() {
   }
 
   async function handleConfirmDomainAction(): Promise<void> {
+    if (!requireDomainWrite()) {
+      setPendingDomainAction(null);
+      return;
+    }
+
     if (!pendingDomainAction) {
       return;
     }
@@ -326,27 +363,31 @@ export function DomainsPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            onClick={() => {
-              setEditingDomain(null);
-              setDomainModalOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-            Thêm tên miền
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setEditingGroup(null);
-              setGroupModalOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-            Thêm nhóm
-          </Button>
+          {canWriteDomains ? (
+            <>
+              <Button
+                type="button"
+                onClick={() => {
+                  setEditingDomain(null);
+                  setDomainModalOpen(true);
+                }}
+              >
+                <Plus className="size-4" />
+                Thêm tên miền
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditingGroup(null);
+                  setGroupModalOpen(true);
+                }}
+              >
+                <Plus className="size-4" />
+                Thêm nhóm
+              </Button>
+            </>
+          ) : null}
           <Button
             disabled={isLoading}
             type="button"
@@ -360,6 +401,8 @@ export function DomainsPage() {
           </Button>
         </div>
       </header>
+
+      {!canWriteDomains ? <AdminReadOnlyNotice /> : null}
 
       <div
         aria-label="Chế độ xem"
@@ -390,10 +433,15 @@ export function DomainsPage() {
             className="grid gap-3 rounded-lg border border-(--admin-border) bg-(--admin-surface) p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_minmax(0,12rem)_minmax(0,14rem)_auto]"
             onSubmit={applyFilters}
           >
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
+            <label
+              className="block text-sm font-medium text-(--admin-text-strong)"
+              htmlFor="domains-search"
+            >
               <span className="mb-2 block">Tìm tên miền</span>
               <Input
                 className={adminInputClass}
+                id="domains-search"
+                name="domainsSearch"
                 placeholder="127.0.0.1:5500"
                 value={filters.search}
                 onChange={(event) =>
@@ -405,10 +453,15 @@ export function DomainsPage() {
               />
             </label>
 
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
+            <label
+              className="block text-sm font-medium text-(--admin-text-strong)"
+              htmlFor="domains-usage-status"
+            >
               <span className="mb-2 block">Tình trạng dùng</span>
               <select
                 className={adminSelectClass}
+                id="domains-usage-status"
+                name="domainsUsageStatus"
                 value={filters.usageStatus}
                 onChange={(event) =>
                   setFilters((current) => ({
@@ -432,10 +485,15 @@ export function DomainsPage() {
               </select>
             </label>
 
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
+            <label
+              className="block text-sm font-medium text-(--admin-text-strong)"
+              htmlFor="domains-status"
+            >
               <span className="mb-2 block">Trạng thái</span>
               <select
                 className={adminSelectClass}
+                id="domains-status"
+                name="domainsStatus"
                 value={filters.status}
                 onChange={(event) =>
                   setFilters((current) => ({
@@ -456,10 +514,15 @@ export function DomainsPage() {
               </select>
             </label>
 
-            <label className="block text-sm font-medium text-(--admin-text-strong)">
+            <label
+              className="block text-sm font-medium text-(--admin-text-strong)"
+              htmlFor="domains-group-key"
+            >
               <span className="mb-2 block">Nhóm</span>
               <select
                 className={adminSelectClass}
+                id="domains-group-key"
+                name="domainsGroupKey"
                 value={filters.domainGroupKey}
                 onChange={(event) =>
                   setFilters((current) => ({
@@ -522,6 +585,7 @@ export function DomainsPage() {
             ) : (
               domains.map((domain) => (
                 <DomainCard
+                  canWrite={canWriteDomains}
                   key={domain.id}
                   domain={domain}
                   isBusy={isSubmitting}
@@ -557,6 +621,7 @@ export function DomainsPage() {
           ) : (
             domainGroups.map((group) => (
               <DomainGroupCard
+                canWrite={canWriteDomains}
                 key={group.id}
                 group={group}
                 isBusy={isSubmitting}
@@ -571,37 +636,43 @@ export function DomainsPage() {
         </div>
       )}
 
-      <DomainFormModal
-        domain={editingDomain}
-        domainGroups={activeDomainGroups}
-        isSubmitting={isSubmitting}
-        open={domainModalOpen}
-        onClose={() => {
-          setDomainModalOpen(false);
-          setEditingDomain(null);
-        }}
-        onSubmit={handleDomainSubmit}
-      />
+      {canWriteDomains ? (
+        <DomainFormModal
+          domain={editingDomain}
+          domainGroups={activeDomainGroups}
+          isSubmitting={isSubmitting}
+          open={domainModalOpen}
+          onClose={() => {
+            setDomainModalOpen(false);
+            setEditingDomain(null);
+          }}
+          onSubmit={handleDomainSubmit}
+        />
+      ) : null}
 
-      <DomainGroupFormModal
-        group={editingGroup}
-        isSubmitting={isSubmitting}
-        open={groupModalOpen}
-        onClose={() => {
-          setGroupModalOpen(false);
-          setEditingGroup(null);
-        }}
-        onSubmit={handleDomainGroupSubmit}
-      />
+      {canWriteDomains ? (
+        <DomainGroupFormModal
+          group={editingGroup}
+          isSubmitting={isSubmitting}
+          open={groupModalOpen}
+          onClose={() => {
+            setGroupModalOpen(false);
+            setEditingGroup(null);
+          }}
+          onSubmit={handleDomainGroupSubmit}
+        />
+      ) : null}
 
-      <AssignDomainModal
-        domain={assigningDomain}
-        isSubmitting={isSubmitting}
-        open={assigningDomain !== null}
-        websites={websites}
-        onClose={() => setAssigningDomain(null)}
-        onSubmit={handleAssign}
-      />
+      {canWriteDomains ? (
+        <AssignDomainModal
+          domain={assigningDomain}
+          isSubmitting={isSubmitting}
+          open={assigningDomain !== null}
+          websites={websites}
+          onClose={() => setAssigningDomain(null)}
+          onSubmit={handleAssign}
+        />
+      ) : null}
 
       <ConfirmActionDialog
         confirmLabel={
@@ -632,7 +703,7 @@ export function DomainsPage() {
           ) : null
         }
         isSubmitting={isSubmitting}
-        open={pendingDomainAction !== null}
+        open={canWriteDomains && pendingDomainAction !== null}
         title={
           pendingDomainAction?.type === "disable-group"
             ? "Vô hiệu hóa nhóm tên miền?"

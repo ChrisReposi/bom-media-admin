@@ -9,6 +9,7 @@ export const DASHBOARD_CACHE_STALE_TIME_MS = 60_000;
 const MAX_VIDEO_PAGE_CACHE_ENTRIES = 100;
 
 export type DashboardVideoCacheParams = {
+  websiteId: string;
   page: number;
   limit: number;
   search?: string;
@@ -16,6 +17,8 @@ export type DashboardVideoCacheParams = {
   status: VideoStatus;
   sortBy: "createdAt" | "updatedAt" | "publishedAt" | "title";
   sortOrder: "asc" | "desc";
+  assignmentStatus: "ACTIVE";
+  eligibleForShareLink: true;
 };
 
 type CacheEntry<T> = {
@@ -38,6 +41,7 @@ function getVideoPageCacheKey(
 ): string {
   return JSON.stringify({
     scope,
+    websiteId: params.websiteId,
     page: params.page,
     limit: params.limit,
     search: normalizeVideoCacheSearch(params.search),
@@ -45,7 +49,25 @@ function getVideoPageCacheKey(
     status: params.status,
     sortBy: params.sortBy,
     sortOrder: params.sortOrder,
+    assignmentStatus: params.assignmentStatus,
+    eligibleForShareLink: params.eligibleForShareLink,
   });
+}
+
+export function invalidateDashboardWebsiteVideoCache(
+  scope: string,
+  websiteId: string,
+): void {
+  for (const cacheKey of videoPageCache.keys()) {
+    const key = JSON.parse(cacheKey) as { scope?: string; websiteId?: string };
+    if (key.scope === scope && key.websiteId === websiteId) {
+      videoPageCache.delete(cacheKey);
+    }
+  }
+}
+
+export function invalidateAllDashboardVideoPageCache(): void {
+  videoPageCache.clear();
 }
 
 function normalizeVideoCacheSearch(value: string | undefined): string {

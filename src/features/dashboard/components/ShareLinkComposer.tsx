@@ -12,6 +12,7 @@ import type {
   DashboardVideoSearchStatus,
   ShareLinkComposerPayload,
 } from "../dashboardTypes";
+import type { VideoSelectionMode } from "../dashboardSelectionPolicy";
 import { ReadyVideoPicker } from "./ReadyVideoPicker";
 import { WebsiteQuickSelect } from "./WebsiteQuickSelect";
 import { CreatedShareLinkCard } from "./CreatedShareLinkCard";
@@ -20,8 +21,11 @@ type ShareLinkComposerProps = {
   websites: Website[];
   videos: VideoAsset[];
   totalVideos: number;
+  activeAssignmentTotal: number;
+  eligibleAssignmentTotal: number;
   selectedWebsiteId: string;
   selectedVideoIds: string[];
+  videoSelectionMode: VideoSelectionMode;
   isSubmitting: boolean;
   isVideoRefreshing: boolean;
   isLoadingMoreVideos: boolean;
@@ -33,10 +37,12 @@ type ShareLinkComposerProps = {
   videoSearchMinLength?: number;
   onWebsiteChange: (websiteId: string) => void;
   onVideoToggle: (videoId: string) => void;
+  onVideoSelectionModeChange: (mode: VideoSelectionMode) => void;
   onVideoSearchChange: (query: string) => void;
   onVideoFilterKeyChange: (value: string) => void;
   onRetryVideoSearch?: () => void;
   onLoadMoreVideos: () => void;
+  onOpenAssignment: () => void;
   onSubmit: (payload: ShareLinkComposerPayload) => Promise<void>;
   createdShareLink: CreateShareLinkResponse | null;
 };
@@ -64,8 +70,11 @@ export function ShareLinkComposer({
   websites,
   videos,
   totalVideos,
+  activeAssignmentTotal,
+  eligibleAssignmentTotal,
   selectedWebsiteId,
   selectedVideoIds,
+  videoSelectionMode,
   isSubmitting,
   isVideoRefreshing,
   isLoadingMoreVideos,
@@ -77,10 +86,12 @@ export function ShareLinkComposer({
   videoSearchMinLength,
   onWebsiteChange,
   onVideoToggle,
+  onVideoSelectionModeChange,
   onVideoSearchChange,
   onVideoFilterKeyChange,
   onRetryVideoSearch,
   onLoadMoreVideos,
+  onOpenAssignment,
   onSubmit,
   createdShareLink,
 }: ShareLinkComposerProps) {
@@ -154,6 +165,8 @@ export function ShareLinkComposer({
               <Input
                 aria-label="Tìm website theo tên"
                 className={[adminInputClass, "pl-9 pr-9"].join(" ")}
+                id="share-link-website-search"
+                name="shareLinkWebsiteSearch"
                 placeholder="Tìm website..."
                 value={websiteSearch}
                 onChange={(event) => setWebsiteSearch(event.target.value)}
@@ -189,7 +202,7 @@ export function ShareLinkComposer({
 
         <section className="rounded-lg border border-(--admin-border) bg-(--admin-surface) p-5 shadow-sm xl:col-span-2">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col mb-4 gap-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-(--admin-text-muted)">
                 Bước 2
               </p>
@@ -210,6 +223,8 @@ export function ShareLinkComposer({
               <Input
                 aria-label="Tìm video theo tiêu đề"
                 className={[adminInputClass, "pl-9 pr-9"].join(" ")}
+                id="share-link-video-search"
+                name="shareLinkVideoSearch"
                 placeholder="Tìm video..."
                 value={videoSearchQuery}
                 onChange={(event) => onVideoSearchChange(event.target.value)}
@@ -231,6 +246,8 @@ export function ShareLinkComposer({
               <Input
                 aria-label="Lọc video theo key"
                 className={[adminInputClass, "pr-9"].join(" ")}
+                id="share-link-video-filter-key"
+                name="shareLinkVideoFilterKey"
                 placeholder="Lọc key..."
                 value={videoFilterKey}
                 onChange={(event) => onVideoFilterKeyChange(event.target.value)}
@@ -246,6 +263,39 @@ export function ShareLinkComposer({
                   <X className="size-4" />
                 </button>
               ) : null}
+            </div>
+
+            <div
+              aria-label="Chế độ chọn video"
+              className="flex flex-col gap-1 rounded-lg border border-(--admin-border) bg-(--admin-surface-alt) p-1"
+              role="group"
+            >
+              <button
+                aria-pressed={videoSelectionMode === "single"}
+                className={[
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition",
+                  videoSelectionMode === "single"
+                    ? "bg-(--admin-primary) text-(--admin-contrast) shadow-sm"
+                    : "text-(--admin-text-muted) hover:text-(--admin-text-strong)",
+                ].join(" ")}
+                type="button"
+                onClick={() => onVideoSelectionModeChange("single")}
+              >
+                1 video
+              </button>
+              <button
+                aria-pressed={videoSelectionMode === "multiple"}
+                className={[
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition",
+                  videoSelectionMode === "multiple"
+                    ? "bg-(--admin-primary) text-(--admin-contrast) shadow-sm"
+                    : "text-(--admin-text-muted) hover:text-(--admin-text-strong)",
+                ].join(" ")}
+                type="button"
+                onClick={() => onVideoSelectionModeChange("multiple")}
+              >
+                Nhiều video
+              </button>
             </div>
           </div>
 
@@ -266,8 +316,12 @@ export function ShareLinkComposer({
             searchMinLength={videoSearchMinLength}
             selectedVideoIds={selectedVideoIds}
             totalVideos={totalVideos}
+            activeAssignmentTotal={activeAssignmentTotal}
+            eligibleAssignmentTotal={eligibleAssignmentTotal}
+            hasSelectedWebsite={Boolean(selectedWebsiteId)}
             videos={videos}
             onLoadMore={onLoadMoreVideos}
+            onOpenAssignment={onOpenAssignment}
             onRetrySearch={onRetryVideoSearch}
             onToggle={onVideoToggle}
           />
@@ -335,11 +389,6 @@ export function ShareLinkComposer({
               />
             </label>
           </div>
-
-          <p className="mt-3 text-xs leading-5 text-(--admin-text-muted)">
-            Thời hạn và giới hạn lượt xem giúp kiểm soát quyền truy cập. Đây
-            không phải cơ chế DRM và không đảm bảo link không thể bị sao chép.
-          </p>
 
           {!canSubmit && !isSubmitting ? (
             <p className="mt-3 text-sm text-(--admin-text-muted)">

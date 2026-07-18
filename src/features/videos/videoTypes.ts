@@ -99,6 +99,8 @@ export type VideosListResponse = {
     limit: number;
     total: number;
     totalPages: number;
+    activeAssignmentTotal?: number;
+    eligibleAssignmentTotal?: number;
   };
 };
 
@@ -142,7 +144,13 @@ export type UploadLocalVideoPayload = {
 };
 
 export type UploadLocalVideoProgress = {
-  phase: "init" | "uploading" | "complete" | "canceling";
+  phase:
+    | "init"
+    | "uploading"
+    | "complete"
+    | "reconciling"
+    | "needs-attention"
+    | "canceling";
   uploadId?: string;
   uploadedChunks: number;
   totalChunks: number;

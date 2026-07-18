@@ -16,6 +16,7 @@ import {
   type DashboardThumbnailLease,
 } from "@/features/dashboard/dashboardThumbnailCache";
 import type { DashboardVideoSearchStatus } from "@/features/dashboard/dashboardTypes";
+import { getWebsiteVideoEmptyStateText } from "@/features/dashboard/dashboardAssignmentPolicy";
 import {
   filterVideosBySource,
   getVideoSourceLabel,
@@ -34,6 +35,9 @@ type ReadyVideoPickerProps = {
   selectedVideoIds: string[];
   onToggle: (videoId: string) => void;
   totalVideos?: number;
+  activeAssignmentTotal: number;
+  eligibleAssignmentTotal: number;
+  hasSelectedWebsite: boolean;
   searchQuery?: string;
   filterKey?: string;
   searchStatus?: DashboardVideoSearchStatus;
@@ -42,6 +46,7 @@ type ReadyVideoPickerProps = {
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  onOpenAssignment: () => void;
   onRetrySearch?: () => void;
 };
 
@@ -56,6 +61,9 @@ export function ReadyVideoPicker({
   selectedVideoIds,
   onToggle,
   totalVideos,
+  activeAssignmentTotal,
+  eligibleAssignmentTotal,
+  hasSelectedWebsite,
   searchQuery,
   filterKey,
   searchStatus = "idle",
@@ -64,6 +72,7 @@ export function ReadyVideoPicker({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  onOpenAssignment,
   onRetrySearch,
 }: ReadyVideoPickerProps) {
   const [sourceFilter, setSourceFilter] = useState<VideoSourceFilter>("all");
@@ -173,14 +182,30 @@ export function ReadyVideoPicker({
 
         {filteredVideos.length === 0 ? (
           <div className="rounded-lg border border-dashed border-(--admin-border) p-4 text-sm text-(--admin-text)">
-            {getEmptyStateText({
-              searchQuery,
-              filterKey,
-              shareableCount: shareableVideos.length,
-              sourceFilter,
-              titleFilteredCount: videos.length,
-              totalVideos: totalVideos ?? videos.length,
-            })}
+            <p>
+              {getWebsiteVideoEmptyStateText({
+                searchQuery,
+                filterKey,
+                shareableCount: shareableVideos.length,
+                sourceFilter,
+                titleFilteredCount: videos.length,
+                totalVideos: totalVideos ?? videos.length,
+                activeAssignmentTotal,
+                eligibleAssignmentTotal,
+                hasSelectedWebsite,
+              })}
+            </p>
+            {hasSelectedWebsite && !searchQuery && !filterKey ? (
+              <Button
+                className="mt-3"
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={onOpenAssignment}
+              >
+                Gán video cho website
+              </Button>
+            ) : null}
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -226,6 +251,8 @@ const ReadyVideoCard = memo(function ReadyVideoCard({
   onToggle,
 }: ReadyVideoCardProps) {
   const isDisabled = !isShareableVideo(video);
+  // One card per video: the video id keeps each checkbox id unique in the list.
+  const checkboxId = `ready-video-${video.id}`;
   const sourceLabel = getVideoSourceLabel(video);
   const filterKeyLabel = formatVideoFilterKey(video.filterKey);
   const thumbnailCacheKey = getDashboardThumbnailCacheKey({
@@ -237,6 +264,7 @@ const ReadyVideoCard = memo(function ReadyVideoCard({
 
   return (
     <label
+      htmlFor={checkboxId}
       className={[
         "group overflow-hidden rounded-lg border bg-(--admin-surface-alt) transition",
         isSelected
@@ -261,7 +289,10 @@ const ReadyVideoCard = memo(function ReadyVideoCard({
           checked={isSelected}
           className="sr-only"
           disabled={isDisabled}
+          id={checkboxId}
+          name="readyVideoIds"
           type="checkbox"
+          value={video.id}
           onChange={() => onToggle(video.id)}
         />
 
@@ -456,47 +487,4 @@ function getSafeThumbnailUrl(thumbnailUrl: string | null): string | null {
   } catch {
     return null;
   }
-}
-
-function getEmptyStateText(params: {
-  searchQuery?: string;
-  filterKey?: string;
-  totalVideos: number;
-  titleFilteredCount: number;
-  shareableCount: number;
-  sourceFilter: VideoSourceFilter;
-}): string {
-  if (params.filterKey && params.titleFilteredCount === 0) {
-    return `Không có video nào khớp với key "${params.filterKey}".`;
-  }
-
-  if (params.searchQuery && params.titleFilteredCount === 0) {
-    return `Không tìm thấy video phù hợp với từ khóa "${params.searchQuery}".`;
-  }
-
-  if (params.totalVideos === 0) {
-    return "Chưa có video READY nào.";
-  }
-
-  if (params.sourceFilter === "link") {
-    return "Chưa có link video READY nào.";
-  }
-
-  if (params.sourceFilter === "embed") {
-    return "Chưa có embed video READY nào.";
-  }
-
-  if (params.sourceFilter === "local-file") {
-    return "Chưa có server storage video READY nào.";
-  }
-
-  if (params.sourceFilter === "db-blob") {
-    return "Chưa có database video READY nào.";
-  }
-
-  if (params.shareableCount === 0) {
-    return "Chưa có video READY có thể chia sẻ.";
-  }
-
-  return "Không có video phù hợp với bộ lọc hiện tại.";
 }

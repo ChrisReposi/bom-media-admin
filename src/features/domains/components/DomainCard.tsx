@@ -8,6 +8,7 @@ import { DomainStatusBadge, DomainUsageBadge } from "./DomainStatusBadge";
 type DomainCardProps = {
   domain: DomainPoolItem;
   isBusy: boolean;
+  canWrite: boolean;
   onAssign: (domain: DomainPoolItem) => void;
   onEdit: (domain: DomainPoolItem) => void;
   onDisable: (domain: DomainPoolItem) => void;
@@ -18,6 +19,7 @@ type DomainCardProps = {
 export function DomainCard({
   domain,
   isBusy,
+  canWrite,
   onAssign,
   onEdit,
   onDisable,
@@ -57,67 +59,69 @@ export function DomainCard({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {canAssign ? (
-            <Button
-              disabled={isBusy}
-              size="sm"
-              type="button"
-              onClick={() => onAssign(domain)}
-            >
-              <Send className="size-4" />
-              Assign
-            </Button>
-          ) : null}
+        {canWrite ? (
+          <div className="flex flex-wrap gap-2">
+            {canAssign ? (
+              <Button
+                disabled={isBusy}
+                size="sm"
+                type="button"
+                onClick={() => onAssign(domain)}
+              >
+                <Send className="size-4" />
+                Assign
+              </Button>
+            ) : null}
 
-          {isInUse ? (
+            {isInUse ? (
+              <Button
+                disabled={isBusy}
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => onUnassign(domain)}
+              >
+                <Link2Off className="size-4" />
+                Unassign
+              </Button>
+            ) : null}
+
+            {isDisabled ? (
+              <Button
+                disabled={isBusy}
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => onActivate(domain)}
+              >
+                <Power className="size-4" />
+                Activate
+              </Button>
+            ) : (
+              <Button
+                disabled={isBusy || !canDisable}
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => onDisable(domain)}
+              >
+                <PowerOff className="size-4" />
+                Disable
+              </Button>
+            )}
+
             <Button
               disabled={isBusy}
               size="sm"
               type="button"
               variant="outline"
-              onClick={() => onUnassign(domain)}
+              onClick={() => onEdit(domain)}
             >
-              <Link2Off className="size-4" />
-              Unassign
+              <Edit2 className="size-4" />
+              Edit
             </Button>
-          ) : null}
-
-          {isDisabled ? (
-            <Button
-              disabled={isBusy}
-              size="sm"
-              type="button"
-              variant="outline"
-              onClick={() => onActivate(domain)}
-            >
-              <Power className="size-4" />
-              Activate
-            </Button>
-          ) : (
-            <Button
-              disabled={isBusy || !canDisable}
-              size="sm"
-              type="button"
-              variant="outline"
-              onClick={() => onDisable(domain)}
-            >
-              <PowerOff className="size-4" />
-              Disable
-            </Button>
-          )}
-
-          <Button
-            disabled={isBusy}
-            size="sm"
-            type="button"
-            variant="outline"
-            onClick={() => onEdit(domain)}
-          >
-            <Edit2 className="size-4" />
-            Edit
-          </Button>
-        </div>
+          </div>
+        ) : null}
       </div>
     </article>
   );

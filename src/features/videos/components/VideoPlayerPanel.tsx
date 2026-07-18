@@ -706,6 +706,8 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
           <div>
             <input
               aria-label="Seek video"
+              id="video-player-seek"
+              name="videoPlayerSeek"
               aria-valuemax={duration || 0}
               aria-valuemin={0}
               aria-valuenow={displayTime}
@@ -800,6 +802,8 @@ export function VideoPlayerPanel({ video }: VideoPlayerPanelProps) {
 
               <input
                 aria-label="Volume"
+                id="video-player-volume"
+                name="videoPlayerVolume"
                 aria-valuemax={1}
                 aria-valuemin={0}
                 aria-valuenow={isMuted ? 0 : volume}

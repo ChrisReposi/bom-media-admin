@@ -1,10 +1,16 @@
 import { axiosClient } from "@/lib/api/axiosClient";
+import { invalidateAllDashboardVideoPageCache } from "@/features/dashboard/dashboardCache";
 import {
   getApiErrorMessage as getSharedApiErrorMessage,
   normalizeApiError,
 } from "@/lib/api/apiError";
 
 import { normalizeVideoFilterKeyInput } from "./videoFilterKeyUtils";
+import { cleanUpdatePayload, cleanVideoFilterKey } from "./videoUpdatePayload";
+import {
+  completeLocalUploadWithRecovery,
+  LocalUploadCompletionStateError,
+} from "./localUploadCompletion";
 import type {
   CreateVideoEmbedPayload,
   CreateVideoManualPayload,
@@ -67,6 +73,10 @@ type UploadLocalVideoOptions = {
 };
 
 export function getApiErrorMessage(error: unknown): string {
+  if (error instanceof LocalUploadCompletionStateError) {
+    return error.message;
+  }
+
   if (normalizeApiError(error).status === 404) {
     return "Khong tim thay video.";
   }
@@ -91,10 +101,6 @@ function cleanThumbnailUrl(value: string | undefined): string | undefined {
   }
 
   return trimmed;
-}
-
-function cleanVideoFilterKey(value: unknown): string | undefined {
-  return normalizeVideoFilterKeyInput(value) || undefined;
 }
 
 function cleanManualPayload(
@@ -251,41 +257,6 @@ function emitLocalUploadProgress(
   options?.onProgress?.(progress);
 }
 
-function cleanUpdatePayload(payload: UpdateVideoPayload): UpdateVideoPayload {
-  const hasFilterKey = Object.prototype.hasOwnProperty.call(
-    payload,
-    "filterKey",
-  );
-  const filterKey = cleanVideoFilterKey(payload.filterKey);
-
-  return {
-    ...(payload.title !== undefined ? { title: payload.title.trim() } : {}),
-    ...(payload.description !== undefined
-      ? payload.description?.trim()
-        ? { description: payload.description.trim() }
-        : {}
-      : {}),
-    ...(payload.playbackUrl?.trim()
-      ? { playbackUrl: payload.playbackUrl.trim() }
-      : {}),
-    ...(hasFilterKey ? { filterKey: filterKey ?? null } : {}),
-    ...(payload.thumbnailUrl !== undefined
-      ? payload.thumbnailUrl?.trim()
-        ? { thumbnailUrl: payload.thumbnailUrl.trim() }
-        : {}
-      : {}),
-    ...(payload.durationSeconds !== undefined &&
-    payload.durationSeconds !== null
-      ? { durationSeconds: payload.durationSeconds }
-      : {}),
-    ...(payload.viewCount !== undefined
-      ? { viewCount: payload.viewCount }
-      : {}),
-    ...(payload.publishedAt ? { publishedAt: payload.publishedAt } : {}),
-    ...(payload.status ? { status: payload.status } : {}),
-  };
-}
-
 export async function getVideos(
   params?: GetVideosParams,
   options?: GetVideosOptions,
@@ -357,6 +328,8 @@ export async function createVideoManual(
     cleanManualPayload(payload),
   );
 
+  invalidateAllDashboardVideoPageCache();
+
   return response.data;
 }
 
@@ -380,6 +353,8 @@ export async function createVideoManualWithThumbnail(
     },
   );
 
+  invalidateAllDashboardVideoPageCache();
+
   return response.data;
 }
 
@@ -390,6 +365,8 @@ export async function createVideoEmbed(
     "/admin/videos/embed",
     cleanEmbedPayload(payload),
   );
+
+  invalidateAllDashboardVideoPageCache();
 
   return response.data;
 }
@@ -414,6 +391,8 @@ export async function createVideoEmbedWithThumbnail(
     },
   );
 
+  invalidateAllDashboardVideoPageCache();
+
   return response.data;
 }
 
@@ -425,6 +404,8 @@ export async function updateVideo(
     `/admin/videos/${id}`,
     cleanUpdatePayload(payload),
   );
+
+  invalidateAllDashboardVideoPageCache();
 
   return unwrapVideoResponse(response.data);
 }
@@ -494,7 +475,7 @@ async function uploadLocalVideoChunk(params: {
   return response.data.upload;
 }
 
-async function completeLocalVideoUpload(
+async function requestLocalVideoUploadCompletion(
   uploadId: string,
   payload: Pick<UploadLocalVideoPayload, "thumbnailFile">,
   signal?: AbortSignal,
@@ -518,6 +499,18 @@ async function completeLocalVideoUpload(
   );
 
   return unwrapVideoResponse(response.data);
+}
+
+export async function getLocalVideoUploadStatus(
+  uploadId: string,
+  signal?: AbortSignal,
+): Promise<VideoUploadSession> {
+  const response = await axiosClient.get<VideoUploadSession>(
+    `/admin/videos/upload-local/${encodeURIComponent(uploadId)}`,
+    { signal },
+  );
+
+  return response.data;
 }
 
 export async function cancelLocalVideoUpload(
@@ -590,11 +583,27 @@ export async function uploadLocalVideo(
     percent: 100,
   });
 
-  const createdVideo = await completeLocalVideoUpload(
-    upload.id,
-    { thumbnailFile: payload.thumbnailFile },
-    options?.signal,
-  );
+  const createdVideo = await completeLocalUploadWithRecovery({
+    uploadId: upload.id,
+    complete: () =>
+      requestLocalVideoUploadCompletion(
+        upload.id,
+        { thumbnailFile: payload.thumbnailFile },
+        options?.signal,
+      ),
+    getStatus: () => getLocalVideoUploadStatus(upload.id, options?.signal),
+    isConflict: (error) => normalizeApiError(error).status === 409,
+    signal: options?.signal,
+    onStatus: (status) => {
+      emitLocalUploadProgress(options, {
+        phase: "reconciling",
+        uploadId: upload.id,
+        uploadedChunks: status.uploadedChunks,
+        totalChunks: status.totalChunks,
+        percent: 100,
+      });
+    },
+  });
 
   if (
     payload.durationSeconds !== undefined ||
@@ -611,6 +620,8 @@ export async function uploadLocalVideo(
 
     return updateVideo(createdVideo.id, metadataPatch);
   }
+
+  invalidateAllDashboardVideoPageCache();
 
   return createdVideo;
 }
@@ -635,6 +646,8 @@ export async function replaceDatabaseVideoBinary(
     },
   );
 
+  invalidateAllDashboardVideoPageCache();
+
   return unwrapVideoResponse(response.data);
 }
 
@@ -656,6 +669,8 @@ export async function updateLocalVideoThumbnail(
     },
   );
 
+  invalidateAllDashboardVideoPageCache();
+
   return unwrapVideoResponse(response.data);
 }
 
@@ -668,6 +683,8 @@ export async function purgeVideo(
     payload,
   );
 
+  invalidateAllDashboardVideoPageCache();
+
   return response.data;
 }
 
@@ -675,6 +692,8 @@ export async function deleteVideo(id: string): Promise<{ message: string }> {
   const response = await axiosClient.delete<{ message: string }>(
     `/admin/videos/${id}`,
   );
+
+  invalidateAllDashboardVideoPageCache();
 
   return response.data;
 }

@@ -47,6 +47,8 @@ export function CreatedShareLinkCard({ shareLink }: CreatedShareLinkCardProps) {
         <div className="space-y-3">
           <Input
             aria-label="Public URL vừa tạo"
+            id="created-share-link-public-url"
+            name="createdShareLinkPublicUrl"
             readOnly
             value={shareLink.publicUrl}
           />

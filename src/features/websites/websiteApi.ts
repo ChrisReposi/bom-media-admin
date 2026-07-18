@@ -1,6 +1,11 @@
 import { axiosClient } from "@/lib/api/axiosClient";
 import { getApiErrorMessage } from "@/lib/api/apiError";
+import { invalidateAllDashboardVideoPageCache } from "@/features/dashboard/dashboardCache";
 import { normalizePublicShareUrl } from "./shareLinkUrlUtils";
+import {
+  buildWebsiteVideosQueryParams,
+  type WebsiteVideosQuery,
+} from "./websiteVideoQuery";
 
 import type {
   ActivateWebsiteDomainPayload,
@@ -18,6 +23,8 @@ import type {
   UpdateWebsitePayload,
   Website,
   WebsiteDomain,
+  WebsiteVideoAssignment,
+  WebsiteVideosListResponse,
   WebsitesListResponse,
 } from "./websiteTypes";
 
@@ -253,6 +260,36 @@ export async function assignWebsiteVideos(
   const response = await axiosClient.put(
     `/admin/websites/${websiteId}/videos`,
     payload,
+  );
+
+  invalidateAllDashboardVideoPageCache();
+
+  return response.data;
+}
+
+export async function getWebsiteVideos(
+  websiteId: string,
+  params: WebsiteVideosQuery,
+  options?: { signal?: AbortSignal },
+): Promise<WebsiteVideosListResponse> {
+  const response = await axiosClient.get<WebsiteVideosListResponse>(
+    `/admin/websites/${websiteId}/videos`,
+    {
+      params: buildWebsiteVideosQueryParams(params),
+      signal: options?.signal,
+    },
+  );
+
+  return response.data;
+}
+
+export async function assignSingleWebsiteVideo(
+  websiteId: string,
+  videoId: string,
+): Promise<WebsiteVideoAssignment> {
+  const response = await axiosClient.post<WebsiteVideoAssignment>(
+    `/admin/websites/${websiteId}/videos/assign`,
+    { videoId: videoId.trim() },
   );
 
   return response.data;

@@ -2,6 +2,265 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-18 — CreateVideo filterKey persistence incident
+
+### Incident
+
+- `Key lọc video` entered in CreateVideoModal was lost after LOCAL_FILE upload; EditVideoModal could set it afterwards.
+
+### Proven Root Cause
+
+- The pre-fix working tree (API side) contained a partial-update bug; it is fixed by the API change referenced below, and the description here is of the pre-fix behavior.
+- **Server-side, not the form or client payload.** `uploadLocalVideo` fires a metadata-only `updateVideo` PATCH (durationSeconds/thumbnailUrl from auto-analysis) right after completion; the API cleared `filterKey` whenever that PATCH omitted the field (validated-DTO own-property bug — see API session-log 2026-07-18). Wire-proven locally: completion stored `sml`, the PATCH nulled it.
+- Admin layers audited and cleared: `register("filterKey", { onBlur })` keeps RHF handlers; `prepareForSourceChange`/`clearAppliedSourceMetadata` never touch filterKey; `reset(defaultValues)` only on close/success; init request carries normalized `filterKey`; `cleanUpdatePayload` omits `filterKey` unless the caller provides it (both working tree and HEAD) — client did not send `filterKey: null`.
+
+### Changed
+
+- `src/features/videos/videoUpdatePayload.ts` (new): `cleanUpdatePayload`/`cleanVideoFilterKey` moved verbatim out of `videoApi.ts` into a pure module (no axios / `import.meta.env`) so the PATCH contract is unit-testable; `videoApi.ts` now imports them. No behavior change.
+- `test/video-update-payload.test.ts` (+4): metadata-only patch has no `filterKey` property; explicit `SML`→`sml`; explicit `""`/`null` → `filterKey: null`; `cleanVideoFilterKey` edge cases.
+
+### Verified
+
+- typecheck, lint, **tests 47/47**, format:check, build, smoke:build, `yarn run check`, `git diff --check` — all pass.
+- Built chunks carry the wiring: `CreateVideoModal-*.js` and `videoFormatters-*.js` contain `filterKey` and `upload-local/init`.
+- Full local chain (against fixed API): init(`SML`) → metadata `"sml"` → chunk → complete `"sml"` → metadata-only PATCH keeps `"sml"` → detail/list/`?filterKey=sml` all return it; concurrent completes yield one video; recovery re-complete keeps the key.
+
+### Deployment Required
+
+- API must deploy first (fix is server-side). Then upload Admin `dist` atomically + purge Cloudflare and verify chunk hashes.
+
+### Pending
+
+- Real-browser DevTools pass on production (init payload + PATCH behavior) — NOT_RUN here; local wire-level evidence only.
+
+## 2026-07-17 — Dashboard selection modes and production video-search alignment
+
+### Incident
+
+- Production Dashboard search hit global `GET /admin/videos?...search=abc...` and got 500; VideosPage search got the same 500. Create Video reportedly lost `filterKey`. Requested: single/multiple selection modes for the share-link picker.
+
+### Proven Root Cause (Admin side)
+
+- **PROVEN:** committed Admin HEAD (`9980f8b`) Dashboard still calls global `getVideos()`; the website-scoped implementation (`getWebsiteVideos`, `websiteVideoQuery.ts`, cache/version guards) exists only in the uncommitted working tree. Production therefore runs the global-endpoint Dashboard — the observed production URL is expected behavior for that build, not artifact corruption. The 500 itself is an API/DB-side issue (see API session-log matrix: schema-drift P2022 mechanism proven locally; production evidence NOT_VERIFIED).
+- **filterKey:** HEAD Admin already registers, normalizes and sends `filterKey` for manual/embed/LOCAL_FILE (verified in HEAD and working tree; `register("filterKey", { onBlur })` merges — does not override — RHF handlers; reset only fires on close/successful submit, not on mode switch). Production loss is consistent with stale/mixed cached JS chunks (field renders, old `videoApi` chunk omits the key; whitelisted API accepts the create). Classification: DEPLOYMENT_OR_VERSION_DRIFT, NOT_VERIFIED against production.
+
+### Changed
+
+- `src/features/dashboard/dashboardSelectionPolicy.ts` (new): `VideoSelectionMode`, `applyVideoSelection`, `reconcileSelectionForMode` — pure, order-preserving; single mode holds ≤1 id, re-picking deselects, collapsing keeps the most recent pick.
+- `src/pages/DashboardPage.tsx`: `videoSelectionMode` state (default `multiple`), toggle routed through the policy, mode switch trims locally without any request, assignment-error reconciliation composes the mode reconcile so single mode stays ≤1.
+- `src/features/dashboard/components/ShareLinkComposer.tsx`: segmented control (`role="group"`, native buttons with `aria-pressed`: “Chọn 1 video” / “Chọn nhiều video”) plus single-mode helper text. Share-link payload remains `videoIds: string[]`.
+- Tests: `test/dashboard-selection-policy.test.ts` (9), `test/website-video-query-contract.test.ts` (3).
+
+### Verified
+
+- typecheck, lint, **tests 43/43**, format:check, build, smoke:build, `yarn run check`, `git diff --check` — all pass.
+- Built `dist` proof: the Dashboard share-link flow calls `/admin/websites/${id}/videos` (websiteApi chunk); global `/admin/videos` remains only in the videoApi chunk used by VideosPage and the assignment dialog (which searches the global catalog by design).
+- Scoped invariants confirmed in source: limit 24, debounce 400ms, min 2/max 80, `status=READY`, `assignmentStatus=ACTIVE`, `eligibleForShareLink=true`, AbortController + dataset-version + website guards, cache key excludes selection mode, website change clears selection. Backend scoped endpoint E2E: 6/6 → HTTP 200 with correct totals (see API log).
+
+### Deployment Required
+
+- Deploy the API (with migrations) **before** this Admin build; then upload `dist` atomically, purge Cloudflare, and verify new chunk hashes — mixed old/new chunks are the leading suspect for the production filterKey loss.
+
+### Pending
+
+- Browser acceptance matrix (roles, rapid website switching, selection retention under search) and production smoke — NOT_RUN this session; local automated checks only.
+
+## 2026-07-17 — Dialog descriptions and form-field identity audit
+
+### Root Cause
+
+- `installHook.js` was never the source; it is only where React DevTools logs the warning. It was not modified.
+- **Dialog warning:** `BaseDialog` in `src/features/adminAccounts/components/AdminAccountManagement.tsx` rendered `Dialog.Content` with a `Dialog.Title` but no `Dialog.Description` and no `aria-describedby`. Every OWNER account dialog (create, role, status, revoke, reset, logical delete, temporary password) goes through that wrapper, so each one warned. The other two Radix call sites were already correct: `ConfirmActionDialog` had a real `Dialog.Description`, and the `MainLayout` mobile drawer already carried an intentional `aria-describedby={undefined}`.
+- **Form-field warning:** controlled fields never passed `id`/`name`. `aria-label` satisfies the accessible name but not the browser's id/name requirement, so labelled-looking fields still warned. Two shared wrappers (`LabeledInput`, `PasswordField`) hid the problem behind a wrapping `<label>`, which associates but supplies no identity.
+- The `Input`/`Textarea`/`input-group` primitives in `src/components/ui/` forward props correctly and were left unchanged; identity belongs to the call site.
+
+### Fixed
+
+- `BaseDialog` now takes a **required** `description: ReactNode` rendered through `Dialog.Description`, so Radix wires `aria-describedby` itself. TypeScript enforces it at every call site. Added `actionDescription()` stating the real consequence per action (role change, disable, revoke sessions, reset, logical delete). No dialog uses a placeholder or empty description.
+- `ConfirmActionDialog`: dropped the hardcoded `confirm-action-title` / `confirm-action-description` ids and the manual `aria-labelledby`/`aria-describedby`, letting Radix generate collision-free ids. Four pages mount two instances each, so the fixed ids were a latent duplicate-id hazard. Nothing referenced them.
+- Visible descriptions added (no `sr-only` needed): all account dialogs via `BaseDialog`.
+- Intentional `aria-describedby={undefined}`: only the `MainLayout` mobile navigation drawer (pre-existing, unchanged) — a title-only nav drawer with no consequence to describe. It was **not** applied anywhere else and never added to a shared wrapper.
+- Added `id`/`name` and explicit `htmlFor` (converting wrapping labels to explicit associations) across 16 files: videos search/filter-key; websites search/domain/domain-group; domains search/usage-status/status/group; the two purge checkboxes; admin-account search/role/status/include-deleted and every account dialog field; domain, domain-group, assign-domain and claim-domain modals; website domain panel; edit-video thumbnail and replacement file inputs; share-link composer and created-share-link fields; assign-video dialog; and the player seek/volume range inputs.
+- `LabeledInput` and `PasswordField` now require `id`/`name` from the call site. `PasswordField` previously derived its DOM id from Vietnamese label text via `.replace(/\W/g, "-")`, which collapses diacritics (`"Mật khẩu hiện tại"` → `M-t-kh-u-hi-n-t-i`); the three live labels happened not to collide, so this was fragility, not a live bug.
+- `ReadyVideoPicker` renders one checkbox per video, so it uses `ready-video-${video.id}` rather than a static id. Only non-sensitive record ids appear in the DOM — no token, password or email.
+- Wired existing hint/error text to fields via `aria-describedby` where a stable target exists (videos search hint, videos filter-key error, domain-form host hint, claim-domain host hint).
+
+### Verified
+
+- Baseline before any edit was already green (typecheck, lint, 25/25 tests, format, build, smoke), so nothing here fixed or masked a pre-existing failure.
+- `yarn test` is a real suite (`node:test` via tsx), not a placeholder: 25 → **30 passing**, 7 suites.
+- Added `test/dialog-and-form-field-accessibility.test.ts` (5 source-contract checks: dialog description-or-opt-out, no empty description, form-control identity, per-file unique static ids, resolvable `aria-describedby`). Each check was **mutation-tested** — removing `Dialog.Description`, stripping the videos-search `id`/`name`, and forcing a duplicate id each made the intended test fail; the tree was restored and re-verified.
+- Static audit across all of `src/`: 84 static ids, zero duplicates; no list-rendered card component holds a static id; the only remaining controls without `id`/`name` are the three prop-forwarding `components/ui/` primitives, which is correct.
+- Final: typecheck, lint, 30/30 tests, format:check, build, smoke:build, `git diff --check` all pass. No new dependency; `yarn.lock` untouched; no `package.json` change.
+- No warning suppression was introduced: no `console.warn` override, no Radix monkey-patch, no eslint-disable, no message filtering.
+- Dev server (`yarn dev:local`) boots and Vite transforms the changed modules (HTTP 200), confirming no import/compile break.
+
+### Pending
+
+- **Browser console verification: NOT_RUN.** No browser automation is available in this environment and Playwright/Cypress were out of scope, so the runtime warnings were not observed as gone. The fix is verified by source contract, types and the build only. A human must run `yarn dev:local`, open DevTools (Preserve log + Warnings + Errors) and walk `/login`, `/change-password-required`, `/`, `/videos`, `/videos/:videoId`, `/websites`, `/domains`, `/settings` and an unknown route, opening and closing every dialog per role (OWNER/ADMIN/STAFF), then confirm each of these returns `[]`:
+  - fields missing identity: `[...document.querySelectorAll("input, select, textarea")].filter((element) => !element.id && !element.getAttribute("name"))`
+  - duplicate ids: `[...document.querySelectorAll("[id]")].map((element) => element.id).filter((id, index, ids) => ids.indexOf(id) !== index)`
+  - dangling `aria-describedby`: `[...document.querySelectorAll("[aria-describedby]")].flatMap((element) => (element.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean).filter((id) => !document.getElementById(id)))`
+  - broken labels: `[...document.querySelectorAll("label[for]")].filter((label) => !document.getElementById(label.htmlFor))`
+- Also confirm by hand that focus trap, Escape, backdrop close, focus restore, submit lock and the OWNER-only purge/account gating still behave as before.
+- No standalone `scripts/audit/` script was added: the same checks live in `test/` where `yarn test` already runs them, which avoids a new `package.json` script and a second copy of the same regex logic.
+
+## 2026-07-16 — OWNER account UI, forced-password flow and cross-tab auth coordination
+
+### Goal And Implementation
+
+- Replaced Settings' shared-secret password form with reusable `change-own-password` UX for every role and a safe own-session list/revoke panel. Confirmed password change or current-session revoke clears persisted auth and requires login again; logout 5xx/network failure still preserves local state and offers a warned local-only clear.
+- Added seven centralized `adminAccount.*` permissions, all OWNER-only. Only OWNER mounts/fetches the account feature; ADMIN/STAFF/unknown roles never request the list. The feature provides bounded list/search/filter/pagination and create, role, status, revoke, reset and logical-delete dialogs with current-OWNER password step-up.
+- Temporary passwords appear only in a dedicated one-time dialog, are never toasted or put in Redux Persist, and are cleared from component state on close. Delete requires exact username plus acknowledgement. Mutations use submission latches, no optimistic state and authoritative refetch; stable codes map to Vietnamese without parsing server messages.
+- Added `/change-password-required` outside the business layout. The route boundary redirects forced accounts away from navigation/business pages; the page exposes only own-password change and safe logout behavior.
+- Added same-origin cross-tab coordination: BroadcastChannel with storage fallback, shared identity update/logout propagation, hard reload on identity replacement, Web Locks with bounded localStorage lease fallback, and a short SHA-256-bound refresh handoff so the lock loser cannot replay the old refresh token before Redux receives the broadcast. The lease never contains a credential.
+
+### Commands And Verification
+
+- `yarn install --frozen-lockfile`, typecheck, lint, build, format check, static build smoke and `git diff --check`: passed.
+- `yarn test`: 25/25 passed in 5 suites. New coverage verifies every account permission is OWNER-only/default-deny, forced-route redirects, stable-code mapping, same/different identity behavior, refresh lease serialization and hashed old-token handoff.
+- Static build smoke passed all 10 checks; the forced-password and Settings/account chunks were produced. `yarn audit --groups dependencies --level moderate` was UNVERIFIED because the Yarn registry endpoint returned HTTP 410. No npm/pnpm lockfile exists.
+
+### Known Limitations And Manual Actions
+
+- Browser acceptance with real OWNER/ADMIN/STAFF, two tabs and independent profiles is still required in staging. Web Locks and BroadcastChannel fallback behavior was unit-tested but not exercised across real browsers/devices here.
+- Production must keep account management disabled until the API migration/read-only data audit and staging account lifecycle pass. Hostinger/Cloudflare, backup/restore, legacy share-link decisions and deployed public artifact checks remain separate gates.
+
+### Next Recommended Prompt
+
+- “Run staging browser acceptance with one OWNER, ADMIN and STAFF across two profiles and multiple tabs; verify forced password, one-time password handling, stale role 403, logout 5xx retry and refresh/logout/identity propagation before enabling Production.”
+
+## 2026-07-16 — Website-scoped share-link composer and explicit assignment UX
+
+### Goal And Root Cause
+
+- Fix the share-link incident where Dashboard loaded global READY videos, allowed a cross-website selection, then received backend assignment rejection. The backend invariant remains the security boundary.
+
+### Changed
+
+- Dashboard now waits for a selected website and reads paginated eligible assignments from `GET /admin/websites/:websiteId/videos` with ACTIVE assignment, READY status and `eligibleForShareLink=true`. Global `/admin/videos` remains unchanged for video management and is used only inside the explicit assignment dialog.
+- Video cache keys include admin scope, website, page, limit, search, filter, status, sort and assignment/eligibility scope. Exact website invalidation runs after assignment, and video mutations clear eligibility caches because affected websites are not known client-side.
+- Website switch increments the dataset version, aborts the old request, clears loading/search state, page, videos, selections and created link. Responses must match both request version and current website before applying.
+- Added an ADMIN/OWNER-only explicit assignment dialog; it requires user selection/confirmation and calls the additive single-assignment endpoint. STAFF still sees read-only content and cannot render or send the action.
+- Stable `VIDEO_NOT_ACTIVE_FOR_WEBSITE` errors refresh the scoped list, remove server-reported invalid IDs and show Vietnamese recovery text. No automatic create retry occurs. Submission gates prevent same-tick duplicate assignment/share-link requests.
+- Empty states distinguish no website, no assignment, assigned-but-not-eligible, search miss and assignment change. Video create/status/source/binary changes invalidate cached eligibility.
+
+### Commands And Verification
+
+- `yarn install --frozen-lockfile`, `yarn typecheck`, `yarn lint`, `yarn test`, `yarn build`, `yarn format:check`, `yarn smoke:build` and `git diff --check`: passed.
+- `yarn test`: 19/19 tests passed in 4 suites. New coverage verifies website-separated cache keys, exact invalidation, stale-response rejection, stable error mapping/reconciliation, query-param allowlisting, empty states and duplicate-submit guards. Existing RBAC/logout/upload-409 coverage remains green.
+- Static build smoke passed all 10 checks. `yarn audit --groups dependencies --level moderate` could not complete because the Yarn registry audit endpoint returned HTTP 410; no dependency was changed in this workstream.
+
+### Known Limitations And Manual Actions
+
+- Production data was not accessed. Two unrelated local legacy links remain owner-review cases, and Production must be audited read-only before deployment.
+- Staging browser acceptance is required for real STAFF/ADMIN/OWNER users, rapid website switching, explicit assignment confirmation, server-side assignment race recovery and deployed public playback.
+
+### Next Recommended Prompt
+
+- “Deploy the additive API to staging, then run browser acceptance for website A/B switching, explicit assignment, structured assignment-race recovery and role-specific controls before deploying the Admin Web.”
+
+## 2026-07-14 — Backend RBAC, upload-complete and logout compatibility
+
+### Goal
+
+- Align the Admin Web with backend STAFF/ADMIN/OWNER permissions, reconcile concurrent LOCAL_FILE completion, and stop treating an unconfirmed server logout as success.
+
+### Changed
+
+- Added centralized, default-deny `AdminPermission` policy and permission hook/gates. STAFF retains read/self-service only; ADMIN can use normal website/domain/video/share/upload writes but cannot permanently purge; OWNER can purge.
+- All current mutation entry points on dashboard, websites, domains, video list and video detail are permission gated. Role changes close stale mutation/purge dialogs, guarded handlers cannot send writes, and STAFF receives a compact read-only notice. Password self-service remains available to all authenticated roles.
+- HTTP 403 is now a permission error and does not trigger re-auth/logout. HTTP 401 retains the session-invalid policy. Login/refresh responses remain the source of the cached admin role, with backend 403 as the final authority for a server-side role change.
+- Logout now sends both the existing refresh-token body and the access-token Bearer credential. Confirmed success or 401 clears local auth and redirects; network/5xx preserves local state, offers retry, and exposes an explicit warned “clear this device only” path.
+- LOCAL_FILE completion now reconciles HTTP 409 through the upload-status endpoint. ACTIVE gets one policy retry, COMPLETING uses bounded polling, COMPLETED obtains the idempotent result, FAILED requires cancel/re-init, and cancelled/expired flows stop. AbortController cancels polling on modal close/unmount and a submission latch prevents double-complete.
+- Replaced the placeholder test script with deterministic Node/TSX tests for the role matrix/default deny, guarded render, 403/401/logout failure policy, 409 reconciliation, bounded polling, FAILED handling and duplicate-submit prevention.
+
+### Files Changed
+
+- Auth/permissions: `src/features/auth/adminPermissions.ts`, `useAdminPermission.ts`, `logoutPolicy.ts`, `authApi.ts`, `authSlice.ts`, `src/lib/api/apiError.ts`, `src/layouts/MainLayout.tsx` and common permission/read-only components.
+- Role-aware surfaces: dashboard, websites/domains and their cards/panels, video list/detail/info/empty states.
+- Upload recovery: `src/features/videos/localUploadCompletion.ts`, `videoApi.ts`, `videoTypes.ts`, and `CreateVideoModal.tsx`.
+- Tests/tooling: `test/*.test.ts(x)`, `package.json`, `yarn.lock`, and this log. No npm/pnpm lockfile was created.
+
+### Commands And Verification
+
+- Baseline: typecheck, lint, build, format and static build smoke passed; the old `yarn test` script was a placeholder and ran no assertions.
+- `yarn install --frozen-lockfile`: passed after the intentional Yarn lock update.
+- `yarn typecheck`, `yarn lint`, `yarn build`, `yarn format:check` and `git diff --check`: passed.
+- `yarn test`: 12/12 tests passed in 3 suites, including polling cancellation on modal ownership loss.
+- `yarn smoke:build`: 10/10 static artifact checks passed.
+- The related public source uses backend-returned playback/thumbnail URLs, preserves query strings including `grant`, calls only the dedicated record-view endpoint, does not use `localStorage`, and does not log credentials. Its archived build copy matches the active `assets/app.js`; the deployed CDN artifact was not tested.
+
+### Known Limitations And Manual Actions
+
+- Browser/API integration and server-side stale-role changes require staging smoke with real STAFF, ADMIN and OWNER accounts. Production remains blocked on owner data decisions, Production read-only data audit, deployed public artifact verification and the separate Hostinger/Cloudflare/large-file/backup gates.
+- No public-site or database data was changed in this task.
+
+### Next Recommended Prompt
+
+- “Run staging browser/API acceptance with STAFF, ADMIN and OWNER accounts, including forced server-side role change, upload completion conflict, logout revocation failure and deployed public media grant playback; record evidence without exposing credentials.”
+
+## 2026-07-14 — Video list return state and automatic local-file analysis
+
+### Fixed
+
+- Root cause của việc quay lại `/videos` luôn về trang 1 là `page`,
+  `statusFilter`, `appliedSearch` và `appliedFilterKey` chỉ nằm trong local state
+  của `VideosPage`; route detail làm list unmount nên các giá trị này bị khởi tạo
+  lại. Chuyển applied list state sang query `page`, `status`, `search`,
+  `filterKey`, với parse/sanitize và canonicalization bằng React Router
+  `replace` cho query lỗi và backend page clamp.
+- Khi mở detail, list truyền duy nhất internal return path hiện tại trong
+  navigation state. Video Detail chỉ chấp nhận pathname chính xác `/videos`
+  (có thể kèm query, không hash/external origin/sub-route) và fallback xác định
+  về `/videos`; cả header back và error-state back dùng cùng path. Purge success
+  vẫn điều hướng `/videos` như contract cũ.
+- LOCAL_FILE không còn phụ thuộc nút “Xác nhận file”. File vừa chọn được truyền
+  trực tiếp vào pipeline phân tích để đọc duration và chụp thumbnail; source key
+  được tạo từ chính file trong change event nên không phụ thuộc React Hook Form /
+  React state của tick trước.
+
+### Changed
+
+- URL là source of truth cho applied video-list state; draft search/filter input
+  đồng bộ lại khi route query đổi qua direct load hoặc browser Back/Forward.
+  Status/search/filter actions reset page, pagination chỉ đổi page và mọi action
+  giữ các query còn lại. Page size 20, `sortOrder: "desc"`, API params, silent
+  refetch, AbortController, request-version/stale-response guards và error/loading
+  behavior được giữ nguyên.
+- Thêm source-analysis version + active source-key guard. File/mode/source thay
+  đổi, modal close/reset và run mới đều invalidate run cũ; stale success/error
+  không thay metadata/status/confirmed key và không phát toast.
+- Object URL preview cũ được revoke khi source đổi; temporary video object URL
+  luôn revoke trong `finally`; generated URL của stale run được revoke ngay;
+  close/unmount cleanup toàn bộ URL. Thumbnail persist vẫn là `File`, không phải
+  `blob:`/`data:` URL.
+- Manual URL và Embed vẫn xác nhận thủ công qua cùng metadata-apply pipeline.
+  LOCAL_FILE chỉ hiện retry khi analysis failed, cho phép submit ở confirmed hoặc
+  partial với source key khớp, và chỉ gọi chunk upload tuần tự trong submit flow.
+  Copy modal được cập nhật để nói rõ chọn file chỉ phân tích, chưa upload.
+
+### Verified
+
+- Baseline trước sửa: `yarn typecheck`, `yarn lint`, `yarn format:check`,
+  `yarn build`, `yarn smoke:build` (10/10) pass; `git diff --check` sạch.
+- Sau sửa: scoped Prettier, `yarn typecheck`, `yarn lint`,
+  `yarn format:check`, `yarn build`, `yarn smoke:build` (10/10),
+  `git diff --check` pass.
+- `yarn test` chạy thành công ở baseline và sau sửa nhưng chỉ là placeholder
+  `TODO_TEST`; repository chưa có automated test suite thật.
+- Grep xác nhận không còn `Xác nhận file`, `getConfirmButtonLabel` hoặc
+  `handleConfirmSource`; không thêm local/session storage hay console logging;
+  create/upload API calls vẫn chỉ nằm trong submit flow.
+
+### Pending
+
+- Manual browser smoke checklist cho URL restore/Back/Forward/query lỗi và
+  LOCAL_FILE auto-analysis/race A→B/retry/submit/upload **NOT_RUN**: repository
+  không có browser automation, backend/test account và fixture video phù hợp
+  không được cung cấp trong session này. Cần chạy các case 1–36 trong yêu cầu
+  trước production; không coi static/build smoke là browser PASS.
+
 ## 2026-07-13 — UX-8 verification and smoke hardening
 
 Final controlled phase: repository hardening, dependency cleanup, static build smoke

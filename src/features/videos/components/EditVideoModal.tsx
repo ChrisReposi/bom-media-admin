@@ -549,8 +549,11 @@ export function EditVideoModal({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Input
                     accept="image/jpeg,image/png,image/webp"
+                    aria-label="Chọn file thumbnail để tải lên"
                     className={fieldClass(false)}
                     disabled={isBusy}
+                    id="edit-video-local-thumbnail-file"
+                    name="editVideoLocalThumbnailFile"
                     type="file"
                     onChange={handleLocalThumbnailFileChange}
                   />
@@ -676,8 +679,11 @@ export function EditVideoModal({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Input
                   accept="video/*"
+                  aria-label="Chọn file video thay thế"
                   className={fieldClass(false)}
                   disabled={isBusy}
+                  id="edit-video-replacement-file"
+                  name="editVideoReplacementFile"
                   type="file"
                   onChange={(event) =>
                     setReplacementFile(event.target.files?.[0] ?? null)

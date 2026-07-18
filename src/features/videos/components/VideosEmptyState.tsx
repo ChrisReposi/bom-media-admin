@@ -3,7 +3,7 @@ import { Film, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type VideosEmptyStateProps = {
-  onCreate: () => void;
+  onCreate?: () => void;
 };
 
 export function VideosEmptyState({ onCreate }: VideosEmptyStateProps) {
@@ -21,10 +21,12 @@ export function VideosEmptyState({ onCreate }: VideosEmptyStateProps) {
         bắt đầu quản lý thư viện.
       </p>
 
-      <Button className="mt-6" type="button" onClick={onCreate}>
-        <Plus className="size-4" />
-        Thêm video
-      </Button>
+      {onCreate ? (
+        <Button className="mt-6" type="button" onClick={onCreate}>
+          <Plus className="size-4" />
+          Thêm video
+        </Button>
+      ) : null}
     </section>
   );
 }

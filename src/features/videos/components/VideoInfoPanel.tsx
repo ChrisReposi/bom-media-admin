@@ -15,7 +15,7 @@ import type { VideoAsset, VideoStatus } from "../videoTypes";
 
 type VideoInfoPanelProps = {
   video: VideoAsset;
-  onEdit: () => void;
+  onEdit?: () => void;
 };
 
 const statusLabels: Record<VideoStatus, string> = {
@@ -74,10 +74,12 @@ export function VideoInfoPanel({ video, onEdit }: VideoInfoPanelProps) {
           </p>
         </div>
 
-        <Button type="button" size="sm" onClick={onEdit}>
-          <Pencil className="size-4" />
-          Sửa
-        </Button>
+        {onEdit ? (
+          <Button type="button" size="sm" onClick={onEdit}>
+            <Pencil className="size-4" />
+            Sửa
+          </Button>
+        ) : null}
       </div>
 
       <Section title="Tổng quan">

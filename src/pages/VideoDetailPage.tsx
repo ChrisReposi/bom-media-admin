@@ -8,16 +8,18 @@ import {
   X,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { AdminReadOnlyNotice } from "@/components/common/AdminReadOnlyNotice";
 import { LazyModalFallback } from "@/components/common/LazyModalFallback";
 import { Input } from "@/components/ui/input";
 import { VideoDetailErrorState } from "@/features/videos/components/VideoDetailErrorState";
 import { VideoDetailSkeleton } from "@/features/videos/components/VideoDetailSkeleton";
 import { VideoInfoPanel } from "@/features/videos/components/VideoInfoPanel";
 import { VideoPlayerPanel } from "@/features/videos/components/VideoPlayerPanel";
+import { useAdminPermission } from "@/features/auth/useAdminPermission";
 import {
   getApiErrorMessage,
   getVideoById,
@@ -48,9 +50,43 @@ const statusLabels: Record<VideoStatus, string> = {
   READY: "Sẵn sàng",
 };
 
+const VIDEO_LIST_FALLBACK_PATH = "/videos";
+const VIDEO_LIST_RETURN_ORIGIN = "https://admin.invalid";
+
+function getVideoListReturnPath(state: unknown): string {
+  if (
+    typeof state !== "object" ||
+    state === null ||
+    !("fromVideoList" in state) ||
+    typeof state.fromVideoList !== "string"
+  ) {
+    return VIDEO_LIST_FALLBACK_PATH;
+  }
+
+  try {
+    const url = new URL(state.fromVideoList, VIDEO_LIST_RETURN_ORIGIN);
+
+    if (
+      url.origin !== VIDEO_LIST_RETURN_ORIGIN ||
+      url.pathname !== VIDEO_LIST_FALLBACK_PATH ||
+      url.hash !== ""
+    ) {
+      return VIDEO_LIST_FALLBACK_PATH;
+    }
+
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return VIDEO_LIST_FALLBACK_PATH;
+  }
+}
+
 export function VideoDetailPage() {
+  const canWriteVideo = useAdminPermission("video.write");
+  const canPurgeVideo = useAdminPermission("video.purge");
   const navigate = useNavigate();
+  const location = useLocation();
   const { videoId } = useParams<{ videoId: string }>();
+  const videoListReturnPath = getVideoListReturnPath(location.state);
   const [video, setVideo] = useState<VideoAsset | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,12 +128,26 @@ export function VideoDetailPage() {
     setPurgeDeleteRemoteAsset(false);
   }, [video?.id]);
 
+  useEffect(() => {
+    if (!canWriteVideo) {
+      setEditOpen(false);
+    }
+
+    if (!canPurgeVideo) {
+      setIsPurgeConfirmOpen(false);
+      setPurgeConfirmation("");
+      setPurgeUnderstood(false);
+      setPurgeDeleteRemoteAsset(false);
+    }
+  }, [canPurgeVideo, canWriteVideo]);
+
   function goBack(): void {
-    navigate("/videos");
+    navigate(videoListReturnPath);
   }
 
   async function handlePurgeVideo(): Promise<void> {
-    if (!video) {
+    if (!canPurgeVideo || !video) {
+      toast.error("Chỉ OWNER được phép purge video.");
       return;
     }
 
@@ -141,8 +191,11 @@ export function VideoDetailPage() {
 
   const viewsText = `${formatViews(video.viewCount)} lượt xem`;
   const publishedText = formatRelativeTime(video.publishedAt);
-  const canPurge =
-    purgeConfirmation.trim() === video.id && purgeUnderstood && !isPurging;
+  const canSubmitPurge =
+    canPurgeVideo &&
+    purgeConfirmation.trim() === video.id &&
+    purgeUnderstood &&
+    !isPurging;
 
   return (
     <section className="space-y-6">
@@ -160,6 +213,8 @@ export function VideoDetailPage() {
           </p>
         </div>
       </div>
+
+      {!canWriteVideo ? <AdminReadOnlyNotice /> : null}
 
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
@@ -185,170 +240,188 @@ export function VideoDetailPage() {
           </div>
         </div>
 
-        <VideoInfoPanel video={video} onEdit={() => setEditOpen(true)} />
+        <VideoInfoPanel
+          video={video}
+          onEdit={canWriteVideo ? () => setEditOpen(true) : undefined}
+        />
       </div>
 
-      <section className="rounded-lg border border-[var(--admin-danger)] bg-[var(--admin-surface)] p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex gap-3">
-            <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]">
-              <AlertTriangle className="size-5" />
-            </span>
-            <div className="space-y-2">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--admin-text-strong)]">
-                  Khu vực nguy hiểm
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-[var(--admin-text)]">
-                  Vô hiệu hóa video chỉ đổi trạng thái và giữ nguyên
-                  metadata/file. Purge vĩnh viễn sẽ xóa metadata video và cố
-                  gắng xóa file video/thumbnail thuộc video này khỏi server
-                  storage. Không thể hoàn tác nếu không khôi phục từ backup. Máy
-                  chủ có thể từ chối purge nếu video còn được gán website hoặc
-                  share link.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2 text-xs text-[var(--admin-text-muted)]">
-                <span className="rounded-full border border-[var(--admin-border)] px-2.5 py-1">
-                  Vô hiệu hóa = giữ file
-                </span>
-                <span className="rounded-full border border-[var(--admin-border)] px-2.5 py-1">
-                  Purge = xóa metadata và thu hồi dung lượng
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {!isPurgeConfirmOpen ? (
-            <Button
-              className="w-full lg:w-auto"
-              type="button"
-              variant="destructive"
-              onClick={() => setIsPurgeConfirmOpen(true)}
-            >
-              <Trash2 className="size-4" />
-              Xóa vĩnh viễn
-            </Button>
-          ) : null}
-        </div>
-
-        {isPurgeConfirmOpen ? (
-          <div className="mt-5 space-y-4 rounded-lg border border-[var(--admin-danger)] bg-[var(--admin-danger-soft)] p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="font-semibold text-[var(--admin-text-strong)]">
-                  Xác nhận purge vĩnh viễn
-                </p>
-                <p className="mt-1 text-sm leading-6 text-[var(--admin-text)]">
-                  Nhập chính xác video ID để tiếp tục. Backend vẫn sẽ chặn purge
-                  nếu video còn được gán website hoặc share link.
-                </p>
-              </div>
-              <Button
-                aria-label="Huỷ purge"
-                disabled={isPurging}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setIsPurgeConfirmOpen(false);
-                  setPurgeConfirmation("");
-                  setPurgeUnderstood(false);
-                  setPurgeDeleteRemoteAsset(false);
-                }}
-              >
-                <X className="size-4" />
-              </Button>
-            </div>
-
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-              <label className="space-y-2" htmlFor="purge-video-id">
-                <span className="text-sm font-medium text-[var(--admin-text-strong)]">
-                  Video ID
-                </span>
-                <Input
-                  aria-describedby="purge-video-id-hint"
-                  autoComplete="off"
-                  disabled={isPurging}
-                  id="purge-video-id"
-                  placeholder={video.id}
-                  value={purgeConfirmation}
-                  onChange={(event) => setPurgeConfirmation(event.target.value)}
-                />
-              </label>
-
-              <div
-                className="rounded-md bg-[var(--admin-surface)] px-3 py-2 text-xs text-[var(--admin-text-muted)]"
-                id="purge-video-id-hint"
-              >
-                <span className="font-semibold text-[var(--admin-text)]">
-                  Phải khớp:
-                </span>{" "}
-                <span className="break-all">{video.id}</span>
-              </div>
-            </div>
-
-            <label className="flex items-start gap-3 text-sm leading-6 text-[var(--admin-text)]">
-              <input
-                checked={purgeUnderstood}
-                className="mt-1 size-4 rounded border-[var(--admin-border)]"
-                disabled={isPurging}
-                type="checkbox"
-                onChange={(event) => setPurgeUnderstood(event.target.checked)}
-              />
-              <span>
-                Tôi hiểu purge sẽ xóa metadata video và cố gắng xóa file
-                LOCAL_FILE video/thumbnail thuộc video này khỏi server storage.
+      {canPurgeVideo ? (
+        <section className="rounded-lg border border-[var(--admin-danger)] bg-[var(--admin-surface)] p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex gap-3">
+              <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]">
+                <AlertTriangle className="size-5" />
               </span>
-            </label>
+              <div className="space-y-2">
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--admin-text-strong)]">
+                    Khu vực nguy hiểm
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-[var(--admin-text)]">
+                    Vô hiệu hóa video chỉ đổi trạng thái và giữ nguyên
+                    metadata/file. Purge vĩnh viễn sẽ xóa metadata video và cố
+                    gắng xóa file video/thumbnail thuộc video này khỏi server
+                    storage. Không thể hoàn tác nếu không khôi phục từ backup.
+                    Máy chủ có thể từ chối purge nếu video còn được gán website
+                    hoặc share link.
+                  </p>
+                </div>
 
-            {video.provider === "CLOUDINARY" && video.providerAssetId ? (
-              <label className="flex items-start gap-3 text-sm leading-6 text-[var(--admin-text)]">
-                <input
-                  checked={purgeDeleteRemoteAsset}
-                  className="mt-1 size-4 rounded border-[var(--admin-border)]"
-                  disabled={isPurging}
-                  type="checkbox"
-                  onChange={(event) =>
-                    setPurgeDeleteRemoteAsset(event.target.checked)
-                  }
-                />
-                <span>
-                  Đồng thời yêu cầu máy chủ xóa remote Cloudinary asset nếu máy
-                  chủ hỗ trợ và asset thuộc video này.
-                </span>
-              </label>
-            ) : null}
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-2 text-sm text-[var(--admin-text)]">
-                <HardDrive className="mt-0.5 size-4 shrink-0 text-[var(--admin-primary)]" />
-                <span>
-                  Kết quả purge chỉ hiển thị trạng thái xóa và dung lượng đã thu
-                  hồi; Admin Web không hiển thị storage path.
-                </span>
+                <div className="flex flex-wrap gap-2 text-xs text-[var(--admin-text-muted)]">
+                  <span className="rounded-full border border-[var(--admin-border)] px-2.5 py-1">
+                    Vô hiệu hóa = giữ file
+                  </span>
+                  <span className="rounded-full border border-[var(--admin-border)] px-2.5 py-1">
+                    Purge = xóa metadata và thu hồi dung lượng
+                  </span>
+                </div>
               </div>
+            </div>
 
+            {!isPurgeConfirmOpen ? (
               <Button
-                disabled={!canPurge}
+                className="w-full lg:w-auto"
                 type="button"
                 variant="destructive"
-                onClick={() => void handlePurgeVideo()}
+                onClick={() => setIsPurgeConfirmOpen(true)}
               >
-                {isPurging ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="size-4" />
-                )}
-                Purge vĩnh viễn
+                <Trash2 className="size-4" />
+                Xóa vĩnh viễn
               </Button>
-            </div>
+            ) : null}
           </div>
-        ) : null}
-      </section>
 
-      {editOpen ? (
+          {isPurgeConfirmOpen ? (
+            <div className="mt-5 space-y-4 rounded-lg border border-[var(--admin-danger)] bg-[var(--admin-danger-soft)] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-[var(--admin-text-strong)]">
+                    Xác nhận purge vĩnh viễn
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-[var(--admin-text)]">
+                    Nhập chính xác video ID để tiếp tục. Backend vẫn sẽ chặn
+                    purge nếu video còn được gán website hoặc share link.
+                  </p>
+                </div>
+                <Button
+                  aria-label="Huỷ purge"
+                  disabled={isPurging}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setIsPurgeConfirmOpen(false);
+                    setPurgeConfirmation("");
+                    setPurgeUnderstood(false);
+                    setPurgeDeleteRemoteAsset(false);
+                  }}
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+                <label className="space-y-2" htmlFor="purge-video-id">
+                  <span className="text-sm font-medium text-[var(--admin-text-strong)]">
+                    Video ID
+                  </span>
+                  <Input
+                    aria-describedby="purge-video-id-hint"
+                    autoComplete="off"
+                    disabled={isPurging}
+                    id="purge-video-id"
+                    placeholder={video.id}
+                    value={purgeConfirmation}
+                    onChange={(event) =>
+                      setPurgeConfirmation(event.target.value)
+                    }
+                  />
+                </label>
+
+                <div
+                  className="rounded-md bg-[var(--admin-surface)] px-3 py-2 text-xs text-[var(--admin-text-muted)]"
+                  id="purge-video-id-hint"
+                >
+                  <span className="font-semibold text-[var(--admin-text)]">
+                    Phải khớp:
+                  </span>{" "}
+                  <span className="break-all">{video.id}</span>
+                </div>
+              </div>
+
+              <label
+                className="flex items-start gap-3 text-sm leading-6 text-[var(--admin-text)]"
+                htmlFor="purge-understood"
+              >
+                <input
+                  checked={purgeUnderstood}
+                  className="mt-1 size-4 rounded border-[var(--admin-border)]"
+                  disabled={isPurging}
+                  id="purge-understood"
+                  name="purgeUnderstood"
+                  type="checkbox"
+                  onChange={(event) => setPurgeUnderstood(event.target.checked)}
+                />
+                <span>
+                  Tôi hiểu purge sẽ xóa metadata video và cố gắng xóa file
+                  LOCAL_FILE video/thumbnail thuộc video này khỏi server
+                  storage.
+                </span>
+              </label>
+
+              {video.provider === "CLOUDINARY" && video.providerAssetId ? (
+                <label
+                  className="flex items-start gap-3 text-sm leading-6 text-[var(--admin-text)]"
+                  htmlFor="purge-delete-remote-asset"
+                >
+                  <input
+                    checked={purgeDeleteRemoteAsset}
+                    className="mt-1 size-4 rounded border-[var(--admin-border)]"
+                    disabled={isPurging}
+                    id="purge-delete-remote-asset"
+                    name="purgeDeleteRemoteAsset"
+                    type="checkbox"
+                    onChange={(event) =>
+                      setPurgeDeleteRemoteAsset(event.target.checked)
+                    }
+                  />
+                  <span>
+                    Đồng thời yêu cầu máy chủ xóa remote Cloudinary asset nếu
+                    máy chủ hỗ trợ và asset thuộc video này.
+                  </span>
+                </label>
+              ) : null}
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-2 text-sm text-[var(--admin-text)]">
+                  <HardDrive className="mt-0.5 size-4 shrink-0 text-[var(--admin-primary)]" />
+                  <span>
+                    Kết quả purge chỉ hiển thị trạng thái xóa và dung lượng đã
+                    thu hồi; Admin Web không hiển thị storage path.
+                  </span>
+                </div>
+
+                <Button
+                  disabled={!canSubmitPurge}
+                  type="button"
+                  variant="destructive"
+                  onClick={() => void handlePurgeVideo()}
+                >
+                  {isPurging ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-4" />
+                  )}
+                  Purge vĩnh viễn
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {editOpen && canWriteVideo ? (
         <Suspense
           fallback={
             <LazyModalFallback label="Đang tải biểu mẫu chỉnh sửa..." />

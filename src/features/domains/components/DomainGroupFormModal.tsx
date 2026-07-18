@@ -100,10 +100,15 @@ export function DomainGroupFormModal({
         </div>
 
         <form className="grid gap-4" onSubmit={handleSubmit}>
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="domain-group-form-key"
+          >
             <span className="mb-2 block">Key</span>
             <Input
               className={inputClass}
+              id="domain-group-form-key"
+              name="domainGroupFormKey"
               placeholder="sml"
               required
               value={form.key}
@@ -116,10 +121,15 @@ export function DomainGroupFormModal({
             />
           </label>
 
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="domain-group-form-name"
+          >
             <span className="mb-2 block">Name</span>
             <Input
               className={inputClass}
+              id="domain-group-form-name"
+              name="domainGroupFormName"
               required
               value={form.name}
               onChange={(event) =>
@@ -131,10 +141,15 @@ export function DomainGroupFormModal({
             />
           </label>
 
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="domain-group-form-description"
+          >
             <span className="mb-2 block">Description</span>
             <Input
               className={inputClass}
+              id="domain-group-form-description"
+              name="domainGroupFormDescription"
               value={form.description}
               onChange={(event) =>
                 setForm((current) => ({
@@ -145,10 +160,15 @@ export function DomainGroupFormModal({
             />
           </label>
 
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="domain-group-form-status"
+          >
             <span className="mb-2 block">Status</span>
             <select
               className={inputClass}
+              id="domain-group-form-status"
+              name="domainGroupFormStatus"
               value={form.status}
               onChange={(event) =>
                 setForm((current) => ({

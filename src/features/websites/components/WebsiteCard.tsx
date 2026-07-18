@@ -6,6 +6,7 @@ import type { Website } from "@/features/websites/websiteTypes";
 type WebsiteCardProps = {
   website: Website;
   isSelected: boolean;
+  canWrite: boolean;
   onSelect: (website: Website) => void;
   onEdit: (website: Website) => void;
   onDisable: (website: Website) => void;
@@ -15,6 +16,7 @@ type WebsiteCardProps = {
 export function WebsiteCard({
   website,
   isSelected,
+  canWrite,
   onSelect,
   onEdit,
   onDisable,
@@ -100,38 +102,40 @@ export function WebsiteCard({
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-2 justify-start shrink-0">
-        <Button
-          size="sm"
-          type="button"
-          variant="outline"
-          onClick={() => onEdit(website)}
-        >
-          <Pencil className="size-4" />
-          Sửa
-        </Button>
-        {website.status === "DISABLED" ? (
+      {canWrite ? (
+        <div className="flex flex-col gap-2 justify-start shrink-0">
           <Button
             size="sm"
             type="button"
             variant="outline"
-            onClick={() => onActivate(website)}
+            onClick={() => onEdit(website)}
           >
-            <Power className="size-4" />
-            Active
+            <Pencil className="size-4" />
+            Sửa
           </Button>
-        ) : (
-          <Button
-            size="sm"
-            type="button"
-            variant="outline"
-            onClick={() => onDisable(website)}
-          >
-            <Trash2 className="size-4" />
-            Disable
-          </Button>
-        )}
-      </div>
+          {website.status === "DISABLED" ? (
+            <Button
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => onActivate(website)}
+            >
+              <Power className="size-4" />
+              Active
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => onDisable(website)}
+            >
+              <Trash2 className="size-4" />
+              Disable
+            </Button>
+          )}
+        </div>
+      ) : null}
     </article>
   );
 }

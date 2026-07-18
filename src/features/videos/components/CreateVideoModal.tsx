@@ -40,6 +40,10 @@ import {
   uploadLocalVideo,
 } from "../videoApi";
 import {
+  LocalUploadCompletionStateError,
+  SubmissionLatch,
+} from "../localUploadCompletion";
+import {
   getDefaultThumbnailUrlFromPlaybackUrl,
   probeVideoMetadata,
 } from "../cloudinaryVideoUtils";
@@ -91,6 +95,14 @@ type CapturedThumbnail = {
   file: File;
   width: number;
   height: number;
+};
+
+type SourceAnalysisInput = {
+  mode: CreateVideoMode;
+  sourceKey: string;
+  file?: File;
+  playbackUrl?: string;
+  embedCodeOrUrl?: string;
 };
 
 const createVideoResolver = zodResolver(
@@ -221,37 +233,38 @@ function buildSourceKey(
   return "";
 }
 
-function getConfirmButtonLabel(mode: CreateVideoMode): string {
-  if (mode === "manual") {
-    return "Xác nhận nguồn video";
-  }
-
-  if (mode === "embed") {
-    return "Xác nhận embed";
-  }
-
-  return "Xác nhận file";
-}
-
-function getSourceStatusMessage(state: SourceConfirmState): string | null {
+function getSourceStatusMessage(
+  state: SourceConfirmState,
+  mode: CreateVideoMode,
+): string | null {
   if (state === "dirty") {
-    return "Nguồn đã thay đổi. Vui lòng xác nhận lại trước khi tạo video.";
+    return mode === "local-upload"
+      ? "File sẽ được tự động phân tích ngay sau khi chọn."
+      : "Nguồn đã thay đổi. Vui lòng xác nhận lại trước khi tạo video.";
   }
 
   if (state === "confirming") {
-    return "Đang phân tích video...";
+    return mode === "local-upload"
+      ? "Đang tự động phân tích video…"
+      : "Đang phân tích video...";
   }
 
   if (state === "confirmed") {
-    return "Nguồn video đã được xác nhận.";
+    return mode === "local-upload"
+      ? "Đã tự động phân tích file video."
+      : "Nguồn video đã được xác nhận.";
   }
 
   if (state === "partial") {
-    return "Nguồn đã được xác nhận một phần. Bổ sung metadata thủ công nếu cần.";
+    return mode === "local-upload"
+      ? "Đã phân tích file. Một vài metadata cần nhập thủ công."
+      : "Nguồn đã được xác nhận một phần. Bổ sung metadata thủ công nếu cần.";
   }
 
   if (state === "failed") {
-    return "Không xác nhận được nguồn. Kiểm tra lại URL hoặc file.";
+    return mode === "local-upload"
+      ? "Không thể tự động phân tích file video."
+      : "Không xác nhận được nguồn. Kiểm tra lại URL hoặc embed.";
   }
 
   return null;
@@ -517,7 +530,10 @@ export function CreateVideoModal({
     useState<UploadLocalVideoProgress | null>(null);
   const objectUrlsRef = useRef(new Set<string>());
   const previousSourceKeyRef = useRef("");
+  const activeSourceKeyRef = useRef("");
+  const sourceAnalysisVersionRef = useRef(0);
   const localUploadAbortControllerRef = useRef<AbortController | null>(null);
+  const submissionLatchRef = useRef(new SubmissionLatch());
 
   const {
     formState: { errors, isSubmitting },
@@ -546,7 +562,7 @@ export function CreateVideoModal({
     sourceKey !== "" &&
     confirmedSourceKey === sourceKey &&
     (sourceConfirmState === "confirmed" || sourceConfirmState === "partial");
-  const sourceStatusMessage = getSourceStatusMessage(sourceConfirmState);
+  const sourceStatusMessage = getSourceStatusMessage(sourceConfirmState, mode);
   const thumbnailPreviewUrl =
     thumbnailUrl || sourceMetadata.thumbnailObjectUrl || null;
   const confirmedEmbedPreviewUrl = isCurrentSourceConfirmed
@@ -557,6 +573,7 @@ export function CreateVideoModal({
     (localUploadProgress.phase === "init" ||
       localUploadProgress.phase === "uploading" ||
       localUploadProgress.phase === "complete" ||
+      localUploadProgress.phase === "reconciling" ||
       localUploadProgress.phase === "canceling");
   const isBusy = isSubmitting || isLocalUploadSubmitting;
 
@@ -592,10 +609,72 @@ export function CreateVideoModal({
     onBlur: handleFilterKeyBlur,
   });
 
+  function handlePlaybackUrlChange(event: ChangeEvent<HTMLInputElement>): void {
+    const nextPlaybackUrl = event.currentTarget.value.trim();
+    const nextSourceKey = buildSourceKey("manual", nextPlaybackUrl, "", null);
+
+    prepareForSourceChange(nextSourceKey);
+  }
+
+  function handleEmbedCodeOrUrlChange(
+    event: ChangeEvent<HTMLTextAreaElement>,
+  ): void {
+    const nextEmbedCodeOrUrl = event.currentTarget.value.trim();
+    const nextSourceKey = buildSourceKey("embed", "", nextEmbedCodeOrUrl, null);
+
+    prepareForSourceChange(nextSourceKey);
+  }
+
+  function handleVideoFileChange(event: ChangeEvent<HTMLInputElement>): void {
+    const file = event.currentTarget.files?.item(0) ?? null;
+    const nextSourceKey = buildSourceKey("local-upload", "", "", file);
+
+    previousSourceKeyRef.current = nextSourceKey;
+
+    if (!file) {
+      resetSourceConfirmation("idle", "");
+      return;
+    }
+
+    if (!file.type.startsWith("video/")) {
+      resetSourceConfirmation("failed", nextSourceKey);
+      toast.error("File tải lên phải là video.");
+      return;
+    }
+
+    void runSourceAnalysis(
+      {
+        mode: "local-upload",
+        sourceKey: nextSourceKey,
+        file,
+      },
+      { automaticLocalFile: true },
+    );
+  }
+
+  const playbackUrlField = register("playbackUrl", {
+    onChange: handlePlaybackUrlChange,
+  });
+  const embedCodeOrUrlField = register("embedCodeOrUrl", {
+    onChange: handleEmbedCodeOrUrlChange,
+  });
+  const videoFileField = register("file", {
+    onChange: handleVideoFileChange,
+  });
+
   function createPreviewObjectUrl(blob: Blob): string {
     const objectUrl = URL.createObjectURL(blob);
     objectUrlsRef.current.add(objectUrl);
     return objectUrl;
+  }
+
+  function revokePreviewObjectUrl(objectUrl: string | null): void {
+    if (!objectUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(objectUrl);
+    objectUrlsRef.current.delete(objectUrl);
   }
 
   function revokeAllPreviewObjectUrls(): void {
@@ -606,7 +685,14 @@ export function CreateVideoModal({
     objectUrlsRef.current.clear();
   }
 
-  function resetSourceConfirmation(nextState: SourceConfirmState = "idle") {
+  function invalidateSourceAnalysis(nextSourceKey = ""): void {
+    sourceAnalysisVersionRef.current += 1;
+    activeSourceKeyRef.current = nextSourceKey;
+  }
+
+  function clearAppliedSourceMetadata(
+    nextState: SourceConfirmState = "idle",
+  ): void {
     revokeAllPreviewObjectUrls();
     setSourceMetadata(createEmptySourceMetadata());
     setConfirmedSourceKey("");
@@ -625,6 +711,19 @@ export function CreateVideoModal({
     });
   }
 
+  function resetSourceConfirmation(
+    nextState: SourceConfirmState = "idle",
+    nextSourceKey = "",
+  ): void {
+    invalidateSourceAnalysis(nextSourceKey);
+    clearAppliedSourceMetadata(nextState);
+  }
+
+  function prepareForSourceChange(nextSourceKey: string): void {
+    previousSourceKeyRef.current = nextSourceKey;
+    resetSourceConfirmation(nextSourceKey ? "dirty" : "idle", nextSourceKey);
+  }
+
   useEffect(() => {
     if (!open) {
       return;
@@ -632,6 +731,8 @@ export function CreateVideoModal({
 
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === "Escape" && !isBusy) {
+        invalidateSourceAnalysis();
+        revokeAllPreviewObjectUrls();
         onOpenChange(false);
       }
     }
@@ -650,7 +751,7 @@ export function CreateVideoModal({
     if (!open) {
       reset(defaultValues);
       previousSourceKeyRef.current = "";
-      resetSourceConfirmation("idle");
+      resetSourceConfirmation("idle", "");
     }
   }, [open, reset]);
 
@@ -667,35 +768,39 @@ export function CreateVideoModal({
       return;
     }
 
-    previousSourceKeyRef.current = sourceKey;
-    resetSourceConfirmation(sourceKey ? "dirty" : "idle");
+    prepareForSourceChange(sourceKey);
   }, [open, sourceKey]);
 
   useEffect(() => {
     return () => {
+      localUploadAbortControllerRef.current?.abort();
+      invalidateSourceAnalysis();
       revokeAllPreviewObjectUrls();
     };
   }, []);
 
-  async function confirmManualSource(): Promise<SourceMetadata> {
-    if (!playbackUrl) {
+  async function confirmManualSource(
+    sourcePlaybackUrl: string,
+    createObjectUrl: (blob: Blob) => string,
+  ): Promise<SourceMetadata> {
+    if (!sourcePlaybackUrl) {
       throw new Error("Vui lòng nhập Playback URL trước.");
     }
 
-    if (!isHttpUrl(playbackUrl)) {
+    if (!isHttpUrl(sourcePlaybackUrl)) {
       throw new Error("Playback URL phải là http hoặc https.");
     }
 
-    const metadata = await probeVideoMetadata(playbackUrl);
+    const metadata = await probeVideoMetadata(sourcePlaybackUrl);
     const cloudinaryThumbnailUrl =
-      getDefaultThumbnailUrlFromPlaybackUrl(playbackUrl);
+      getDefaultThumbnailUrlFromPlaybackUrl(sourcePlaybackUrl);
     let capturedThumbnail: CapturedThumbnail | null = null;
 
     if (!cloudinaryThumbnailUrl) {
       capturedThumbnail = await captureVideoFrameThumbnail(
-        playbackUrl,
+        sourcePlaybackUrl,
         "remote-video-thumbnail.jpg",
-        createPreviewObjectUrl,
+        createObjectUrl,
       );
     }
 
@@ -717,8 +822,10 @@ export function CreateVideoModal({
     };
   }
 
-  async function confirmEmbedSource(): Promise<SourceMetadata> {
-    const src = extractIframeSrc(embedCodeOrUrl);
+  async function confirmEmbedSource(
+    sourceEmbedCodeOrUrl: string,
+  ): Promise<SourceMetadata> {
+    const src = extractIframeSrc(sourceEmbedCodeOrUrl);
 
     if (!src) {
       throw new Error("Vui lòng nhập embed code hoặc URL.");
@@ -745,7 +852,10 @@ export function CreateVideoModal({
     };
   }
 
-  async function confirmFileSource(file: File): Promise<SourceMetadata> {
+  async function confirmFileSource(
+    file: File,
+    createObjectUrl: (blob: Blob) => string,
+  ): Promise<SourceMetadata> {
     if (!file.type.startsWith("video/")) {
       throw new Error("File tải lên phải là video.");
     }
@@ -759,7 +869,7 @@ export function CreateVideoModal({
       const capturedThumbnail = await captureVideoFrameThumbnail(
         videoObjectUrl,
         resolveThumbnailFilename(file.name),
-        createPreviewObjectUrl,
+        createObjectUrl,
       );
 
       return {
@@ -780,82 +890,223 @@ export function CreateVideoModal({
     }
   }
 
-  async function handleConfirmSource(): Promise<void> {
-    if (!sourceKey) {
+  async function analyzeSource(
+    input: SourceAnalysisInput,
+    createObjectUrl: (blob: Blob) => string,
+  ): Promise<SourceMetadata> {
+    if (input.mode === "manual") {
+      return confirmManualSource(input.playbackUrl ?? "", createObjectUrl);
+    }
+
+    if (input.mode === "embed") {
+      return confirmEmbedSource(input.embedCodeOrUrl ?? "");
+    }
+
+    if (!input.file) {
+      throw new Error("Vui lòng chọn file video.");
+    }
+
+    return confirmFileSource(input.file, createObjectUrl);
+  }
+
+  function isCurrentSourceAnalysis(
+    version: number,
+    analysisSourceKey: string,
+  ): boolean {
+    return (
+      sourceAnalysisVersionRef.current === version &&
+      activeSourceKeyRef.current === analysisSourceKey
+    );
+  }
+
+  function discardSourceMetadata(metadata: SourceMetadata): void {
+    revokePreviewObjectUrl(metadata.thumbnailObjectUrl);
+  }
+
+  function applySourceMetadata(metadata: SourceMetadata): void {
+    setSourceMetadata(metadata);
+
+    if (metadata.durationSeconds !== null) {
+      setValue("durationSeconds", metadata.durationSeconds, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    } else {
+      setValue("durationSeconds", undefined, {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+    }
+
+    if (metadata.thumbnailUrl !== null) {
+      setValue("thumbnailUrl", metadata.thumbnailUrl, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    } else {
+      setValue("thumbnailUrl", "", {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+    }
+
+    const needsManualDuration = metadata.durationSeconds === null;
+    const needsManualThumbnail =
+      metadata.thumbnailUrl === null && metadata.thumbnailFile === null;
+
+    setShowManualDuration(needsManualDuration);
+    setShowManualThumbnail(needsManualThumbnail);
+    setSourceConfirmState(
+      needsManualDuration || needsManualThumbnail ? "partial" : "confirmed",
+    );
+  }
+
+  async function runSourceAnalysis(
+    input: SourceAnalysisInput,
+    options?: { automaticLocalFile?: boolean },
+  ): Promise<void> {
+    if (!input.sourceKey) {
       toast.error("Vui lòng nhập hoặc chọn nguồn video trước.");
       return;
     }
 
-    setSourceConfirmState("confirming");
-    revokeAllPreviewObjectUrls();
-    setThumbnailFailed(false);
+    const analysisVersion = sourceAnalysisVersionRef.current + 1;
+    sourceAnalysisVersionRef.current = analysisVersion;
+    activeSourceKeyRef.current = input.sourceKey;
+    clearAppliedSourceMetadata("confirming");
+
+    const createAnalysisObjectUrl = (blob: Blob): string => {
+      const objectUrl = createPreviewObjectUrl(blob);
+
+      if (!isCurrentSourceAnalysis(analysisVersion, input.sourceKey)) {
+        revokePreviewObjectUrl(objectUrl);
+      }
+
+      return objectUrl;
+    };
 
     try {
-      const metadata =
-        mode === "manual"
-          ? await confirmManualSource()
-          : mode === "embed"
-            ? await confirmEmbedSource()
-            : selectedFile
-              ? await confirmFileSource(selectedFile)
-              : null;
+      const metadata = await analyzeSource(input, createAnalysisObjectUrl);
 
-      if (metadata === null) {
-        throw new Error("Vui lòng chọn file video.");
+      if (!isCurrentSourceAnalysis(analysisVersion, input.sourceKey)) {
+        discardSourceMetadata(metadata);
+        return;
       }
 
-      setSourceMetadata(metadata);
-      setConfirmedSourceKey(sourceKey);
-
-      if (metadata.durationSeconds !== null) {
-        setValue("durationSeconds", metadata.durationSeconds, {
-          shouldDirty: true,
-          shouldValidate: true,
-        });
-      } else {
-        setValue("durationSeconds", undefined, {
-          shouldDirty: true,
-          shouldValidate: false,
-        });
-      }
-
-      if (metadata.thumbnailUrl !== null) {
-        setValue("thumbnailUrl", metadata.thumbnailUrl, {
-          shouldDirty: true,
-          shouldValidate: true,
-        });
-      } else {
-        setValue("thumbnailUrl", "", {
-          shouldDirty: true,
-          shouldValidate: false,
-        });
-      }
+      setConfirmedSourceKey(input.sourceKey);
+      applySourceMetadata(metadata);
 
       const needsManualDuration = metadata.durationSeconds === null;
       const needsManualThumbnail =
         metadata.thumbnailUrl === null && metadata.thumbnailFile === null;
 
-      setShowManualDuration(needsManualDuration);
-      setShowManualThumbnail(needsManualThumbnail);
-      setSourceConfirmState(
-        needsManualDuration || needsManualThumbnail ? "partial" : "confirmed",
-      );
-
       if (needsManualDuration || needsManualThumbnail) {
-        toast.warning("Đã xác nhận nguồn. Một vài metadata cần nhập thủ công.");
+        toast.warning(
+          options?.automaticLocalFile
+            ? "Đã phân tích file. Một vài metadata cần nhập thủ công."
+            : "Đã xác nhận nguồn. Một vài metadata cần nhập thủ công.",
+        );
       } else {
-        toast.success("Đã xác nhận nguồn video.");
+        toast.success(
+          options?.automaticLocalFile
+            ? "Đã tự động phân tích file video."
+            : "Đã xác nhận nguồn video.",
+        );
       }
     } catch (error) {
-      setSourceMetadata(createEmptySourceMetadata());
-      setConfirmedSourceKey("");
-      setShowManualDuration(false);
-      setShowManualThumbnail(false);
-      setSourceConfirmState("failed");
+      if (!isCurrentSourceAnalysis(analysisVersion, input.sourceKey)) {
+        return;
+      }
+
+      clearAppliedSourceMetadata("failed");
       toast.error(
-        error instanceof Error ? error.message : "Xác nhận thất bại.",
+        options?.automaticLocalFile
+          ? "Không thể tự động phân tích file video."
+          : error instanceof Error
+            ? error.message
+            : "Xác nhận thất bại.",
       );
     }
+  }
+
+  function handleSourceConfirmation(): void {
+    if (mode === "manual") {
+      void runSourceAnalysis({
+        mode,
+        sourceKey,
+        playbackUrl,
+      });
+      return;
+    }
+
+    if (mode === "embed") {
+      void runSourceAnalysis({
+        mode,
+        sourceKey,
+        embedCodeOrUrl,
+      });
+    }
+  }
+
+  function handleCreateModeChange(nextMode: CreateVideoMode): void {
+    if (nextMode === mode) {
+      return;
+    }
+
+    const nextSourceKey = buildSourceKey(
+      nextMode,
+      playbackUrl,
+      embedCodeOrUrl,
+      selectedFile,
+    );
+
+    setValue("mode", nextMode, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    previousSourceKeyRef.current = nextSourceKey;
+
+    if (nextMode === "local-upload" && selectedFile) {
+      if (selectedFile.type.startsWith("video/")) {
+        void runSourceAnalysis(
+          {
+            mode: nextMode,
+            sourceKey: nextSourceKey,
+            file: selectedFile,
+          },
+          { automaticLocalFile: true },
+        );
+      } else {
+        resetSourceConfirmation("failed", nextSourceKey);
+      }
+      return;
+    }
+
+    resetSourceConfirmation(nextSourceKey ? "dirty" : "idle", nextSourceKey);
+  }
+
+  function handleRetryLocalFileAnalysis(): void {
+    if (!selectedFile) {
+      return;
+    }
+
+    const retrySourceKey = buildSourceKey("local-upload", "", "", selectedFile);
+    previousSourceKeyRef.current = retrySourceKey;
+
+    void runSourceAnalysis(
+      {
+        mode: "local-upload",
+        sourceKey: retrySourceKey,
+        file: selectedFile,
+      },
+      { automaticLocalFile: true },
+    );
+  }
+
+  function closeModal(): void {
+    invalidateSourceAnalysis();
+    revokeAllPreviewObjectUrls();
+    onOpenChange(false);
   }
 
   function handleManualThumbnailFileChange(
@@ -934,9 +1185,17 @@ export function CreateVideoModal({
   }
 
   const onSubmit = handleSubmit(async (values) => {
+    if (!submissionLatchRef.current.tryStart()) {
+      return;
+    }
+
     try {
       if (!isCurrentSourceConfirmed) {
-        toast.error("Vui lòng xác nhận nguồn video trước khi tạo.");
+        toast.error(
+          values.mode === "local-upload"
+            ? "File video chưa được phân tích xong."
+            : "Vui lòng xác nhận nguồn video trước khi tạo.",
+        );
         return;
       }
 
@@ -1051,19 +1310,37 @@ export function CreateVideoModal({
       }
 
       reset(defaultValues);
-      resetSourceConfirmation("idle");
+      resetSourceConfirmation("idle", "");
       previousSourceKeyRef.current = "";
       onOpenChange(false);
       onCreated();
     } catch (error) {
       localUploadAbortControllerRef.current = null;
-      setLocalUploadProgress(null);
+
+      if (
+        error instanceof LocalUploadCompletionStateError &&
+        (error.uploadStatus === "FAILED" || error.uploadStatus === "TIMEOUT")
+      ) {
+        setLocalUploadProgress((currentProgress) =>
+          currentProgress
+            ? {
+                ...currentProgress,
+                uploadId: error.uploadId,
+                phase: "needs-attention",
+              }
+            : null,
+        );
+      } else {
+        setLocalUploadProgress(null);
+      }
 
       if (isApiRequestCanceled(error)) {
         return;
       }
 
       toast.error(getApiErrorMessage(error));
+    } finally {
+      submissionLatchRef.current.finish();
     }
   });
 
@@ -1077,7 +1354,12 @@ export function CreateVideoModal({
       ? playbackUrl !== ""
       : mode === "embed"
         ? embedCodeOrUrl !== ""
-        : selectedFile !== null);
+        : false);
+  const isSubmitDisabled =
+    isBusy ||
+    localUploadProgress?.phase === "needs-attention" ||
+    !isCurrentSourceConfirmed ||
+    (mode === "local-upload" && selectedFile === null);
 
   return (
     <div
@@ -1086,7 +1368,7 @@ export function CreateVideoModal({
       role="dialog"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isBusy) {
-          onOpenChange(false);
+          closeModal();
         }
       }}
     >
@@ -1097,7 +1379,9 @@ export function CreateVideoModal({
               Thêm Video
             </h2>
             <p className="mt-1 text-sm text-(--admin-text)">
-              Xác nhận nguồn trước, sau đó tạo video bằng metadata đã kiểm tra.
+              Chọn nguồn video. File trên server sẽ được tự động phân tích để
+              lấy thời lượng và thumbnail; URL và embed vẫn cần xác nhận thủ
+              công.
             </p>
           </div>
 
@@ -1106,7 +1390,7 @@ export function CreateVideoModal({
             className="flex size-9 items-center justify-center rounded-md text-(--admin-text) transition hover:bg-(--admin-surface-alt) hover:text-(--admin-text-strong)"
             disabled={isBusy}
             type="button"
-            onClick={() => onOpenChange(false)}
+            onClick={closeModal}
           >
             <X className="size-5" />
           </button>
@@ -1123,7 +1407,7 @@ export function CreateVideoModal({
               )}
               disabled={isBusy}
               type="button"
-              onClick={() => setValue("mode", "local-upload")}
+              onClick={() => handleCreateModeChange("local-upload")}
             >
               <Server className="size-4" />
               Server
@@ -1138,7 +1422,7 @@ export function CreateVideoModal({
               )}
               disabled={isBusy}
               type="button"
-              onClick={() => setValue("mode", "manual")}
+              onClick={() => handleCreateModeChange("manual")}
             >
               <Link2 className="size-4" />
               Manual URL
@@ -1153,7 +1437,7 @@ export function CreateVideoModal({
               )}
               disabled={isBusy}
               type="button"
-              onClick={() => setValue("mode", "embed")}
+              onClick={() => handleCreateModeChange("embed")}
             >
               <Code2 className="size-4" />
               Embed Code
@@ -1162,8 +1446,9 @@ export function CreateVideoModal({
 
           {mode === "local-upload" ? (
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
-              Preferred production path: video bytes and thumbnail files are
-              stored in private server storage. MySQL stores metadata only.
+              Sau khi chọn file, hệ thống tự động đọc thời lượng và chụp
+              thumbnail. File chỉ được upload khi bạn nhấn “Upload server
+              storage”.
             </p>
           ) : null}
 
@@ -1265,23 +1550,47 @@ export function CreateVideoModal({
                       Nguồn video
                     </h3>
                     <p className="mt-1 text-xs text-(--admin-text-muted)">
-                      Confirm Source chỉ phân tích metadata, không tạo video.
+                      {mode === "local-upload"
+                        ? "Phân tích chỉ đọc metadata trong trình duyệt; upload chỉ bắt đầu khi submit."
+                        : "Xác nhận chỉ phân tích metadata, không tạo video."}
                     </p>
                   </div>
 
-                  <Button
-                    disabled={!canConfirmSource || isBusy}
-                    type="button"
-                    variant="outline"
-                    onClick={() => void handleConfirmSource()}
-                  >
-                    {sourceConfirmState === "confirming" ? (
-                      <Loader2 className="size-4 animate-spin" />
+                  {mode === "local-upload" ? (
+                    sourceConfirmState === "failed" && selectedFile ? (
+                      <Button
+                        disabled={isBusy}
+                        type="button"
+                        variant="outline"
+                        onClick={handleRetryLocalFileAnalysis}
+                      >
+                        <Sparkles className="size-4" />
+                        Thử phân tích lại
+                      </Button>
                     ) : (
-                      <CheckCircle2 className="size-4" />
-                    )}
-                    {getConfirmButtonLabel(mode)}
-                  </Button>
+                      <p className="text-xs text-(--admin-text-muted)">
+                        {sourceConfirmState === "confirming"
+                          ? "Đang tự động phân tích video…"
+                          : "File sẽ được tự động phân tích ngay sau khi chọn."}
+                      </p>
+                    )
+                  ) : (
+                    <Button
+                      disabled={!canConfirmSource || isBusy}
+                      type="button"
+                      variant="outline"
+                      onClick={handleSourceConfirmation}
+                    >
+                      {sourceConfirmState === "confirming" ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="size-4" />
+                      )}
+                      {mode === "manual"
+                        ? "Xác nhận nguồn video"
+                        : "Xác nhận embed"}
+                    </Button>
+                  )}
                 </div>
 
                 {mode === "manual" ? (
@@ -1297,7 +1606,7 @@ export function CreateVideoModal({
                       placeholder="https://res.cloudinary.com/.../video/upload/demo.mp4"
                       className={fieldClass(!!errors.playbackUrl)}
                       aria-invalid={!!errors.playbackUrl}
-                      {...register("playbackUrl")}
+                      {...playbackUrlField}
                     />
                     <FieldError message={errors.playbackUrl?.message} />
                   </div>
@@ -1317,7 +1626,7 @@ export function CreateVideoModal({
                       )}
                       placeholder='<iframe src="https://player.cloudinary.com/embed/?cloud_name=dekft3yz7&public_id=demo"></iframe>'
                       aria-invalid={!!errors.embedCodeOrUrl}
-                      {...register("embedCodeOrUrl")}
+                      {...embedCodeOrUrlField}
                     />
                     <p className="mt-2 text-xs text-(--admin-text-muted)">
                       Dán iframe embed code hoặc chỉ URL trong thuộc tính src.
@@ -1340,15 +1649,16 @@ export function CreateVideoModal({
                       className={fieldClass(!!errors.file)}
                       disabled={isBusy}
                       aria-invalid={!!errors.file}
-                      {...register("file")}
+                      {...videoFileField}
                     />
                     <FieldError message={errors.file?.message} />
 
                     <div className="mt-3 flex gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
                       <Server className="mt-0.5 size-4 shrink-0" />
                       <p>
-                        Upload sẽ được chia thành nhiều chunk tuần tự, sau đó
-                        backend merge vào private server storage.
+                        Hệ thống tự động đọc metadata sau khi chọn file. Khi
+                        submit, upload vẫn được chia thành nhiều chunk tuần tự,
+                        sau đó backend merge vào private server storage.
                       </p>
                     </div>
 
@@ -1756,9 +2066,13 @@ export function CreateVideoModal({
                       ? "Đang tạo upload session..."
                       : localUploadProgress.phase === "complete"
                         ? "Đang hoàn tất và merge file trên server..."
-                        : localUploadProgress.phase === "canceling"
-                          ? "Đang hủy upload..."
-                          : `Đã upload ${localUploadProgress.uploadedChunks}/${localUploadProgress.totalChunks} chunk.`}
+                        : localUploadProgress.phase === "reconciling"
+                          ? "Request khác đang hoàn tất. Đang kiểm tra trạng thái máy chủ..."
+                          : localUploadProgress.phase === "needs-attention"
+                            ? "Phiên upload cần xử lý. Đọc thông báo lỗi và hủy phiên trước khi upload lại."
+                            : localUploadProgress.phase === "canceling"
+                              ? "Đang hủy upload..."
+                              : `Đã upload ${localUploadProgress.uploadedChunks}/${localUploadProgress.totalChunks} chunk.`}
                   </p>
                 </div>
 
@@ -1800,12 +2114,12 @@ export function CreateVideoModal({
               disabled={isBusy}
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={closeModal}
             >
               Hủy
             </Button>
 
-            <Button disabled={isBusy} type="submit">
+            <Button disabled={isSubmitDisabled} type="submit">
               {isBusy ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : mode === "local-upload" ? (

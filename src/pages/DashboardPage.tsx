@@ -3,17 +3,32 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { AdminReadOnlyNotice } from "@/components/common/AdminReadOnlyNotice";
+import { useAdminPermission } from "@/features/auth/useAdminPermission";
 import {
+  invalidateDashboardWebsiteVideoCache,
   loadDashboardActiveWebsites,
   loadDashboardVideoPage,
   type DashboardVideoCacheParams,
 } from "@/features/dashboard/dashboardCache";
 import { ShareLinkComposer } from "@/features/dashboard/components/ShareLinkComposer";
+import { AssignWebsiteVideoDialog } from "@/features/dashboard/components/AssignWebsiteVideoDialog";
+import {
+  isWebsiteVideoAssignmentError,
+  isCurrentWebsiteVideoResponse,
+  reconcileAssignmentErrorSelection,
+} from "@/features/dashboard/dashboardAssignmentPolicy";
+import {
+  DEFAULT_VIDEO_SELECTION_MODE,
+  applyVideoSelection,
+  reconcileSelectionForMode,
+  type VideoSelectionMode,
+} from "@/features/dashboard/dashboardSelectionPolicy";
+import { createSubmissionGate } from "@/features/dashboard/dashboardSubmissionGate";
 import type {
   DashboardVideoSearchStatus,
   ShareLinkComposerPayload,
 } from "@/features/dashboard/dashboardTypes";
-import { getVideos } from "@/features/videos/videoApi";
 import {
   isValidVideoFilterKey,
   normalizeVideoFilterKeyInput,
@@ -23,6 +38,8 @@ import { isShareableVideo } from "@/features/videos/videoSourceUtils";
 import type { VideoAsset } from "@/features/videos/videoTypes";
 import {
   createShareLink,
+  assignSingleWebsiteVideo,
+  getWebsiteVideos,
   getWebsiteApiErrorMessage,
   getWebsites,
 } from "@/features/websites/websiteApi";
@@ -46,6 +63,7 @@ const DASHBOARD_VIDEO_FILTER_ERROR_MESSAGE =
   "Không thể lọc video lúc này. Vui lòng thử lại.";
 
 export function DashboardPage() {
+  const canWriteShareLinks = useAdminPermission("shareLink.write");
   const adminId = useAppSelector((state) => state.auth.admin?.id);
   const cacheScope = adminId ?? "unknown-admin";
   const [websites, setWebsites] = useState<Website[]>([]);
@@ -53,6 +71,8 @@ export function DashboardPage() {
   const [videoMeta, setVideoMeta] = useState({
     total: 0,
     totalPages: 0,
+    activeAssignmentTotal: 0,
+    eligibleAssignmentTotal: 0,
   });
   const [videoPage, setVideoPage] = useState(1);
   const [videoSearchQuery, setVideoSearchQuery] = useState("");
@@ -61,6 +81,8 @@ export function DashboardPage() {
   const [debouncedVideoFilterKey, setDebouncedVideoFilterKey] = useState("");
   const [selectedWebsiteId, setSelectedWebsiteId] = useState("");
   const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [videoSelectionMode, setVideoSelectionMode] =
+    useState<VideoSelectionMode>(DEFAULT_VIDEO_SELECTION_MODE);
   const [createdShareLink, setCreatedShareLink] =
     useState<CreateShareLinkResponse | null>(null);
   const [hasLoadedWebsites, setHasLoadedWebsites] = useState(false);
@@ -69,12 +91,18 @@ export function DashboardPage() {
   const [isVideoRefreshing, setIsVideoRefreshing] = useState(false);
   const [isLoadingMoreVideos, setIsLoadingMoreVideos] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
+  const [isAssigningVideo, setIsAssigningVideo] = useState(false);
   const [websiteError, setWebsiteError] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoSearchError, setVideoSearchError] = useState<string | null>(null);
   const videoDatasetVersionRef = useRef(0);
   const videoRequestAbortRef = useRef<AbortController | null>(null);
   const hasLoadedVideosRef = useRef(false);
+  const previousWebsiteIdRef = useRef("");
+  const selectedWebsiteIdRef = useRef("");
+  const shareLinkSubmissionGateRef = useRef(createSubmissionGate());
+  const assignmentSubmissionGateRef = useRef(createSubmissionGate());
 
   const loadWebsites = useCallback(
     async (bypassCache = false): Promise<boolean> => {
@@ -124,12 +152,27 @@ export function DashboardPage() {
       const normalizedSearch = normalizeDashboardVideoSearch(search);
       const normalizedFilterKey = normalizeVideoFilterKeyInput(filterKey);
       const requestVersion = videoDatasetVersionRef.current + 1;
+      const requestWebsiteId = selectedWebsiteId;
       videoDatasetVersionRef.current = requestVersion;
       videoRequestAbortRef.current?.abort();
       videoRequestAbortRef.current = null;
       setVideoPage(1);
       setIsLoadingMoreVideos(false);
       setVideoSearchError(null);
+
+      if (!selectedWebsiteId) {
+        setVideos([]);
+        setVideoMeta({
+          total: 0,
+          totalPages: 0,
+          activeAssignmentTotal: 0,
+          eligibleAssignmentTotal: 0,
+        });
+        hasLoadedVideosRef.current = true;
+        setHasLoadedVideos(true);
+        setIsVideoRefreshing(false);
+        return true;
+      }
 
       if (isShortDashboardVideoSearch(normalizedSearch)) {
         setVideoError(null);
@@ -158,6 +201,7 @@ export function DashboardPage() {
       try {
         setVideoError(null);
         const params = getDashboardVideoParams(
+          selectedWebsiteId,
           1,
           normalizedSearch,
           normalizedFilterKey,
@@ -167,10 +211,25 @@ export function DashboardPage() {
           params,
           bypassCache,
           dedupeRequests: false,
-          fetcher: () => getVideos(params, { signal: abortController.signal }),
+          fetcher: async () => {
+            const response = await getWebsiteVideos(selectedWebsiteId, params, {
+              signal: abortController.signal,
+            });
+            return {
+              items: response.items.map((assignment) => assignment.video),
+              meta: response.meta,
+            };
+          },
         });
 
-        if (videoDatasetVersionRef.current !== requestVersion) {
+        if (
+          !isCurrentWebsiteVideoResponse({
+            requestVersion,
+            currentVersion: videoDatasetVersionRef.current,
+            requestWebsiteId,
+            currentWebsiteId: selectedWebsiteIdRef.current,
+          })
+        ) {
           return true;
         }
 
@@ -178,6 +237,8 @@ export function DashboardPage() {
         setVideoMeta({
           total: response.meta.total,
           totalPages: response.meta.totalPages,
+          activeAssignmentTotal: response.meta.activeAssignmentTotal ?? 0,
+          eligibleAssignmentTotal: response.meta.eligibleAssignmentTotal ?? 0,
         });
         setVideoPage(response.meta.page);
         didSucceed = true;
@@ -221,7 +282,7 @@ export function DashboardPage() {
         }
       }
     },
-    [cacheScope],
+    [cacheScope, selectedWebsiteId],
   );
 
   useEffect(() => {
@@ -252,16 +313,42 @@ export function DashboardPage() {
   }, [videoFilterKey]);
 
   useEffect(() => {
+    if (previousWebsiteIdRef.current === selectedWebsiteId) return;
+
+    previousWebsiteIdRef.current = selectedWebsiteId;
+    selectedWebsiteIdRef.current = selectedWebsiteId;
+    videoDatasetVersionRef.current += 1;
+    videoRequestAbortRef.current?.abort();
+    videoRequestAbortRef.current = null;
+    setSelectedVideoIds([]);
+    setCreatedShareLink(null);
+    setIsLoadingMoreVideos(false);
+    setVideoSearchError(null);
+  }, [selectedWebsiteId]);
+
+  useEffect(() => {
     void loadFirstVideoPage(debouncedVideoSearch, debouncedVideoFilterKey);
   }, [debouncedVideoFilterKey, debouncedVideoSearch, loadFirstVideoPage]);
 
-  const handleVideoToggle = useCallback((videoId: string): void => {
-    setSelectedVideoIds((currentVideoIds) =>
-      currentVideoIds.includes(videoId)
-        ? currentVideoIds.filter((currentVideoId) => currentVideoId !== videoId)
-        : [...currentVideoIds, videoId],
-    );
-  }, []);
+  const handleVideoToggle = useCallback(
+    (videoId: string): void => {
+      setSelectedVideoIds((currentVideoIds) =>
+        applyVideoSelection(videoSelectionMode, currentVideoIds, videoId),
+      );
+    },
+    [videoSelectionMode],
+  );
+
+  const handleSelectionModeChange = useCallback(
+    (nextMode: VideoSelectionMode): void => {
+      setVideoSelectionMode(nextMode);
+      // Mode is purely local UI state: trim the selection, never refetch.
+      setSelectedVideoIds((currentVideoIds) =>
+        reconcileSelectionForMode(nextMode, currentVideoIds),
+      );
+    },
+    [],
+  );
 
   const handleLoadMoreVideos = useCallback(async (): Promise<void> => {
     const normalizedSearchQuery =
@@ -285,8 +372,10 @@ export function DashboardPage() {
     }
 
     const requestVersion = videoDatasetVersionRef.current;
+    const requestWebsiteId = selectedWebsiteId;
     const nextPage = videoPage + 1;
     const params = getDashboardVideoParams(
+      selectedWebsiteId,
       nextPage,
       debouncedVideoSearch,
       debouncedVideoFilterKey,
@@ -299,10 +388,23 @@ export function DashboardPage() {
       const response = await loadDashboardVideoPage({
         scope: cacheScope,
         params,
-        fetcher: () => getVideos(params),
+        fetcher: async () => {
+          const response = await getWebsiteVideos(selectedWebsiteId, params);
+          return {
+            items: response.items.map((assignment) => assignment.video),
+            meta: response.meta,
+          };
+        },
       });
 
-      if (videoDatasetVersionRef.current !== requestVersion) {
+      if (
+        !isCurrentWebsiteVideoResponse({
+          requestVersion,
+          currentVersion: videoDatasetVersionRef.current,
+          requestWebsiteId,
+          currentWebsiteId: selectedWebsiteIdRef.current,
+        })
+      ) {
         return;
       }
 
@@ -312,6 +414,8 @@ export function DashboardPage() {
       setVideoMeta({
         total: response.meta.total,
         totalPages: response.meta.totalPages,
+        activeAssignmentTotal: response.meta.activeAssignmentTotal ?? 0,
+        eligibleAssignmentTotal: response.meta.eligibleAssignmentTotal ?? 0,
       });
       setVideoPage(response.meta.page);
     } catch (fetchError) {
@@ -343,7 +447,30 @@ export function DashboardPage() {
     videoSearchError,
     videoMeta.totalPages,
     videoPage,
+    selectedWebsiteId,
   ]);
+
+  const handleWebsiteChange = useCallback((websiteId: string): void => {
+    selectedWebsiteIdRef.current = websiteId;
+    videoDatasetVersionRef.current += 1;
+    videoRequestAbortRef.current?.abort();
+    videoRequestAbortRef.current = null;
+    setIsVideoRefreshing(false);
+    setIsLoadingMoreVideos(false);
+    setVideoSearchError(null);
+    setVideoPage(1);
+    setVideos([]);
+    setVideoMeta({
+      total: 0,
+      totalPages: 0,
+      activeAssignmentTotal: 0,
+      eligibleAssignmentTotal: 0,
+    });
+    setSelectedVideoIds([]);
+    setCreatedShareLink(null);
+    setIsAssignmentDialogOpen(false);
+    setSelectedWebsiteId(websiteId);
+  }, []);
 
   const handleVideoSearchChange = useCallback((query: string): void => {
     videoDatasetVersionRef.current += 1;
@@ -405,13 +532,23 @@ export function DashboardPage() {
   async function handleCreateShareLink(
     payload: ShareLinkComposerPayload,
   ): Promise<void> {
+    if (!shareLinkSubmissionGateRef.current.tryAcquire()) return;
+
+    if (!canWriteShareLinks) {
+      toast.error("Bạn không có quyền tạo share link.");
+      shareLinkSubmissionGateRef.current.release();
+      return;
+    }
+
     if (!selectedWebsiteId) {
       toast.error("Vui lòng chọn website.");
+      shareLinkSubmissionGateRef.current.release();
       return;
     }
 
     if (selectedVideoIds.length === 0) {
       toast.error("Vui lòng chọn ít nhất một video READY.");
+      shareLinkSubmissionGateRef.current.release();
       return;
     }
 
@@ -435,9 +572,55 @@ export function DashboardPage() {
         );
       }
     } catch (createError) {
-      toast.error(getWebsiteApiErrorMessage(createError));
+      if (isWebsiteVideoAssignmentError(createError)) {
+        setSelectedVideoIds((currentVideoIds) =>
+          reconcileSelectionForMode(
+            videoSelectionMode,
+            reconcileAssignmentErrorSelection(currentVideoIds, createError),
+          ),
+        );
+        await loadFirstVideoPage(
+          debouncedVideoSearch,
+          debouncedVideoFilterKey,
+          true,
+        );
+        toast.error(
+          "Một hoặc nhiều video không còn được gán hoạt động cho website này. Danh sách video đã được cập nhật. Vui lòng kiểm tra và tạo link lại.",
+        );
+      } else {
+        toast.error(getWebsiteApiErrorMessage(createError));
+      }
     } finally {
       setIsSubmitting(false);
+      shareLinkSubmissionGateRef.current.release();
+    }
+  }
+
+  async function handleAssignVideo(videoId: string): Promise<void> {
+    if (
+      !canWriteShareLinks ||
+      !selectedWebsiteId ||
+      !assignmentSubmissionGateRef.current.tryAcquire()
+    ) {
+      return;
+    }
+    setIsAssigningVideo(true);
+
+    try {
+      await assignSingleWebsiteVideo(selectedWebsiteId, videoId);
+      invalidateDashboardWebsiteVideoCache(cacheScope, selectedWebsiteId);
+      setIsAssignmentDialogOpen(false);
+      await loadFirstVideoPage(
+        debouncedVideoSearch,
+        debouncedVideoFilterKey,
+        true,
+      );
+      toast.success("Đã gán video cho website.");
+    } catch (assignmentError) {
+      toast.error(getWebsiteApiErrorMessage(assignmentError));
+    } finally {
+      setIsAssigningVideo(false);
+      assignmentSubmissionGateRef.current.release();
     }
   }
 
@@ -517,33 +700,54 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      <ShareLinkComposer
-        hasMoreVideos={hasMoreVideos}
-        isLoadingMoreVideos={isLoadingMoreVideos}
-        isSubmitting={isSubmitting}
-        isVideoRefreshing={isVideoBusy}
-        selectedVideoIds={selectedVideoIds}
-        selectedWebsiteId={selectedWebsiteId}
-        totalVideos={videoMeta.total}
-        videoFilterKey={videoFilterKey}
-        videoSearchError={
-          isVideoFilterKeyInvalid
-            ? "Key lọc chỉ được gồm chữ thường, số và dấu gạch dưới."
-            : videoSearchError
+      {!canWriteShareLinks ? <AdminReadOnlyNotice /> : null}
+
+      {canWriteShareLinks ? (
+        <ShareLinkComposer
+          hasMoreVideos={hasMoreVideos}
+          isLoadingMoreVideos={isLoadingMoreVideos}
+          isSubmitting={isSubmitting}
+          isVideoRefreshing={isVideoBusy}
+          selectedVideoIds={selectedVideoIds}
+          selectedWebsiteId={selectedWebsiteId}
+          videoSelectionMode={videoSelectionMode}
+          onVideoSelectionModeChange={handleSelectionModeChange}
+          totalVideos={videoMeta.total}
+          activeAssignmentTotal={videoMeta.activeAssignmentTotal}
+          eligibleAssignmentTotal={videoMeta.eligibleAssignmentTotal}
+          videoFilterKey={videoFilterKey}
+          videoSearchError={
+            isVideoFilterKeyInvalid
+              ? "Key lọc chỉ được gồm chữ thường, số và dấu gạch dưới."
+              : videoSearchError
+          }
+          videoSearchMinLength={DASHBOARD_VIDEO_SEARCH_MIN_LENGTH}
+          videoSearchQuery={videoSearchQuery}
+          videoSearchStatus={videoSearchStatus}
+          videos={videos}
+          websites={websites}
+          onLoadMoreVideos={() => void handleLoadMoreVideos()}
+          onRetryVideoSearch={handleRetryVideoSearch}
+          onSubmit={handleCreateShareLink}
+          onVideoFilterKeyChange={handleVideoFilterKeyChange}
+          onVideoSearchChange={handleVideoSearchChange}
+          onVideoToggle={handleVideoToggle}
+          onWebsiteChange={handleWebsiteChange}
+          onOpenAssignment={() => setIsAssignmentDialogOpen(true)}
+          createdShareLink={createdShareLink}
+        />
+      ) : null}
+
+      <AssignWebsiteVideoDialog
+        assignedVideoIds={videos.map((video) => video.id)}
+        isSubmitting={isAssigningVideo}
+        open={canWriteShareLinks && isAssignmentDialogOpen}
+        websiteName={
+          websites.find((website) => website.id === selectedWebsiteId)?.name ??
+          ""
         }
-        videoSearchMinLength={DASHBOARD_VIDEO_SEARCH_MIN_LENGTH}
-        videoSearchQuery={videoSearchQuery}
-        videoSearchStatus={videoSearchStatus}
-        videos={videos}
-        websites={websites}
-        onLoadMoreVideos={() => void handleLoadMoreVideos()}
-        onRetryVideoSearch={handleRetryVideoSearch}
-        onSubmit={handleCreateShareLink}
-        onVideoFilterKeyChange={handleVideoFilterKeyChange}
-        onVideoSearchChange={handleVideoSearchChange}
-        onVideoToggle={handleVideoToggle}
-        onWebsiteChange={setSelectedWebsiteId}
-        createdShareLink={createdShareLink}
+        onAssign={handleAssignVideo}
+        onClose={() => setIsAssignmentDialogOpen(false)}
       />
     </section>
   );
@@ -561,6 +765,7 @@ function isShortDashboardVideoSearch(value: string): boolean {
 }
 
 function getDashboardVideoParams(
+  websiteId: string,
   page: number,
   search: string,
   filterKey: string,
@@ -569,6 +774,7 @@ function getDashboardVideoParams(
   const normalizedFilterKey = normalizeVideoFilterKeyInput(filterKey);
 
   return {
+    websiteId,
     page,
     limit: DASHBOARD_VIDEO_PAGE_SIZE,
     search: normalizedSearch || undefined,
@@ -576,6 +782,8 @@ function getDashboardVideoParams(
     status: DASHBOARD_VIDEO_STATUS,
     sortBy: DASHBOARD_VIDEO_SORT_BY,
     sortOrder: DASHBOARD_VIDEO_SORT_ORDER,
+    assignmentStatus: "ACTIVE",
+    eligibleForShareLink: true,
   };
 }
 

@@ -88,10 +88,15 @@ export function AssignDomainModal({
         </div>
 
         <form className="grid gap-4" onSubmit={handleSubmit}>
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="assign-domain-website"
+          >
             <span className="mb-2 block">Website</span>
             <select
               className={inputClass}
+              id="assign-domain-website"
+              name="assignDomainWebsite"
               required
               value={websiteId}
               onChange={(event) => {
@@ -109,10 +114,15 @@ export function AssignDomainModal({
           </label>
 
           {selectedWebsiteHasDomain ? (
-            <label className="flex items-start gap-2 rounded-md border border-(--admin-warning-soft) bg-(--admin-warning-soft) p-3 text-sm text-(--admin-text)">
+            <label
+              className="flex items-start gap-2 rounded-md border border-(--admin-warning-soft) bg-(--admin-warning-soft) p-3 text-sm text-(--admin-text)"
+              htmlFor="assign-domain-replace-existing"
+            >
               <input
                 checked={replaceExisting}
                 className="mt-1"
+                id="assign-domain-replace-existing"
+                name="assignDomainReplaceExisting"
                 type="checkbox"
                 onChange={(event) => setReplaceExisting(event.target.checked)}
               />

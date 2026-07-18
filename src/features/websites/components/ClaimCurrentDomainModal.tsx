@@ -123,11 +123,16 @@ export function ClaimCurrentDomainModal({
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="claim-domain-website"
+          >
             <span className="mb-2 block">Website</span>
             <select
               className="h-10 w-full rounded-md border border-(--admin-border) bg-(--admin-input-bg) px-3 text-sm text-(--admin-text-strong) outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--admin-focus-ring)]"
               disabled={isSubmitting || websites.length === 0}
+              id="claim-domain-website"
+              name="claimDomainWebsite"
               required
               value={websiteId}
               onChange={(event) => setWebsiteId(event.target.value)}
@@ -140,26 +145,40 @@ export function ClaimCurrentDomainModal({
             </select>
           </label>
 
-          <label className="block text-sm font-medium text-(--admin-text-strong)">
+          <label
+            className="block text-sm font-medium text-(--admin-text-strong)"
+            htmlFor="claim-domain-host"
+          >
             <span className="mb-2 block">Host</span>
             <Input
+              aria-describedby="claim-domain-host-hint"
               className="h-10 border-(--admin-border) bg-(--admin-input-bg) text-(--admin-text-strong)"
+              id="claim-domain-host"
+              name="claimDomainHost"
               placeholder="example.com"
               required
               value={host}
               onBlur={() => setHost(normalizeHostInput(host))}
               onChange={(event) => setHost(event.target.value)}
             />
-            <span className="mt-2 block text-xs font-normal text-(--admin-text-muted)">
+            <span
+              className="mt-2 block text-xs font-normal text-(--admin-text-muted)"
+              id="claim-domain-host-hint"
+            >
               Defaults to window.location.hostname. Do not include protocol or
               paths.
             </span>
           </label>
 
-          <label className="inline-flex items-center gap-2 text-sm text-(--admin-text)">
+          <label
+            className="inline-flex items-center gap-2 text-sm text-(--admin-text)"
+            htmlFor="claim-domain-is-primary"
+          >
             <input
               checked={isPrimary}
               disabled={isSubmitting}
+              id="claim-domain-is-primary"
+              name="claimDomainIsPrimary"
               type="checkbox"
               onChange={(event) => setIsPrimary(event.target.checked)}
             />

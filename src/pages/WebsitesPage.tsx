@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmActionDialog } from "@/components/common/ConfirmActionDialog";
+import { AdminReadOnlyNotice } from "@/components/common/AdminReadOnlyNotice";
 import { Button } from "@/components/ui/button";
+import { useAdminPermission } from "@/features/auth/useAdminPermission";
 import { Input } from "@/components/ui/input";
 import { ClaimCurrentDomainModal } from "@/features/websites/components/ClaimCurrentDomainModal";
 import {
@@ -53,6 +55,7 @@ type PendingWebsiteAction =
   | null;
 
 export function WebsitesPage() {
+  const canWriteWebsites = useAdminPermission("website.write");
   const [websites, setWebsites] = useState<Website[]>([]);
   const [domainGroups, setDomainGroups] = useState<DomainGroup[]>([]);
   const [availableDomains, setAvailableDomains] = useState<DomainPoolItem[]>(
@@ -82,6 +85,26 @@ export function WebsitesPage() {
     () => websites.find((website) => website.id === selectedWebsiteId) ?? null,
     [selectedWebsiteId, websites],
   );
+
+  useEffect(() => {
+    if (canWriteWebsites) {
+      return;
+    }
+
+    setIsWebsiteModalOpen(false);
+    setIsClaimModalOpen(false);
+    setEditingWebsite(null);
+    setPendingWebsiteAction(null);
+  }, [canWriteWebsites]);
+
+  function requireWebsiteWrite(): boolean {
+    if (canWriteWebsites) {
+      return true;
+    }
+
+    toast.error("Bạn không có quyền thay đổi website hoặc tên miền.");
+    return false;
+  }
 
   const fetchWebsites = useCallback(async () => {
     setIsLoading(true);
@@ -161,11 +184,13 @@ export function WebsitesPage() {
   }, [fetchAvailableDomains]);
 
   function openCreateModal(): void {
+    if (!requireWebsiteWrite()) return;
     setEditingWebsite(null);
     setIsWebsiteModalOpen(true);
   }
 
   function openEditModal(website: Website): void {
+    if (!requireWebsiteWrite()) return;
     setEditingWebsite(website);
     setIsWebsiteModalOpen(true);
   }
@@ -187,6 +212,7 @@ export function WebsitesPage() {
   async function handleWebsiteSubmit(
     payload: CreateWebsitePayload | UpdateWebsitePayload,
   ): Promise<void> {
+    if (!requireWebsiteWrite()) return;
     setIsSubmittingWebsite(true);
 
     try {
@@ -210,6 +236,7 @@ export function WebsitesPage() {
   }
 
   function handleDisableWebsite(website: Website): void {
+    if (!requireWebsiteWrite()) return;
     setPendingWebsiteAction({ type: "disable-website", website });
   }
 
@@ -229,6 +256,7 @@ export function WebsitesPage() {
   }
 
   async function handleActivateWebsite(website: Website): Promise<void> {
+    if (!requireWebsiteWrite()) return;
     try {
       await updateWebsite(website.id, {
         status: "ACTIVE",
@@ -245,6 +273,7 @@ export function WebsitesPage() {
     domainId: string;
     replaceExisting: boolean;
   }): Promise<void> {
+    if (!requireWebsiteWrite()) return;
     if (!selectedWebsite) {
       toast.error("Vui lòng chọn website.");
       return;
@@ -268,6 +297,7 @@ export function WebsitesPage() {
   }
 
   async function handleUnassignDomain(domainId: string): Promise<void> {
+    if (!requireWebsiteWrite()) return;
     if (!selectedWebsite) {
       return;
     }
@@ -296,6 +326,11 @@ export function WebsitesPage() {
   }
 
   async function handleConfirmWebsiteAction(): Promise<void> {
+    if (!requireWebsiteWrite()) {
+      setPendingWebsiteAction(null);
+      return;
+    }
+
     if (!pendingWebsiteAction) {
       return;
     }
@@ -313,6 +348,7 @@ export function WebsitesPage() {
     host: string;
     isPrimary: boolean;
   }): Promise<void> {
+    if (!requireWebsiteWrite()) return;
     setIsClaimingDomain(true);
 
     try {
@@ -335,15 +371,17 @@ export function WebsitesPage() {
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={isLoading || websites.length === 0}
-          type="button"
-          variant="outline"
-          onClick={() => setIsClaimModalOpen(true)}
-        >
-          <Globe2 className="size-4" />
-          Nhận tên miền hiện tại
-        </Button>
+        {canWriteWebsites ? (
+          <Button
+            disabled={isLoading || websites.length === 0}
+            type="button"
+            variant="outline"
+            onClick={() => setIsClaimModalOpen(true)}
+          >
+            <Globe2 className="size-4" />
+            Nhận tên miền hiện tại
+          </Button>
+        ) : null}
         <Button
           disabled={isLoading}
           type="button"
@@ -357,14 +395,21 @@ export function WebsitesPage() {
         </Button>
       </div>
 
+      {!canWriteWebsites ? <AdminReadOnlyNotice /> : null}
+
       <form
         className="grid gap-3 rounded-lg border border-(--admin-border) bg-(--admin-surface) p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_minmax(0,16rem)_minmax(0,14rem)_auto]"
         onSubmit={applyFilters}
       >
-        <label className="block text-sm font-medium text-(--admin-text-strong)">
+        <label
+          className="block text-sm font-medium text-(--admin-text-strong)"
+          htmlFor="websites-search"
+        >
           <span className="mb-2 block">Tìm kiếm</span>
           <Input
             className="h-10 border-(--admin-border) bg-(--admin-input-bg) text-(--admin-text-strong)"
+            id="websites-search"
+            name="websitesSearch"
             placeholder="Tên, slug, tên miền hoặc nhóm"
             value={filters.search}
             onChange={(event) =>
@@ -376,10 +421,15 @@ export function WebsitesPage() {
           />
         </label>
 
-        <label className="block text-sm font-medium text-(--admin-text-strong)">
+        <label
+          className="block text-sm font-medium text-(--admin-text-strong)"
+          htmlFor="websites-domain"
+        >
           <span className="mb-2 block">Tên miền</span>
           <Input
             className="h-10 border-(--admin-border) bg-(--admin-input-bg) text-(--admin-text-strong)"
+            id="websites-domain"
+            name="websitesDomain"
             placeholder="example.com"
             value={filters.domain}
             onChange={(event) =>
@@ -391,10 +441,15 @@ export function WebsitesPage() {
           />
         </label>
 
-        <label className="block text-sm font-medium text-(--admin-text-strong)">
+        <label
+          className="block text-sm font-medium text-(--admin-text-strong)"
+          htmlFor="websites-domain-group-key"
+        >
           <span className="mb-2 block">Khóa nhóm</span>
           <Input
             className="h-10 border-(--admin-border) bg-(--admin-input-bg) text-(--admin-text-strong)"
+            id="websites-domain-group-key"
+            name="websitesDomainGroupKey"
             placeholder="Tìm nhóm tên miền, vd: SML"
             value={filters.domainGroupKey}
             onChange={(event) =>
@@ -446,10 +501,12 @@ export function WebsitesPage() {
               </span>
             </div>
 
-            <Button type="button" onClick={openCreateModal}>
-              <Plus className="size-4" />
-              Thêm website
-            </Button>
+            {canWriteWebsites ? (
+              <Button type="button" onClick={openCreateModal}>
+                <Plus className="size-4" />
+                Thêm website
+              </Button>
+            ) : null}
           </div>
 
           {isLoading ? (
@@ -461,6 +518,7 @@ export function WebsitesPage() {
               <div className="flex flex-col gap-4">
                 {websites.map((website) => (
                   <WebsiteCard
+                    canWrite={canWriteWebsites}
                     key={website.id}
                     isSelected={selectedWebsiteId === website.id}
                     website={website}
@@ -484,6 +542,7 @@ export function WebsitesPage() {
         <div className="space-y-4">
           <WebsiteDomainPanel
             availableDomains={availableDomains}
+            canWrite={canWriteWebsites}
             isLoadingDomains={isLoadingAvailableDomains}
             isSubmitting={isSubmittingDomain}
             website={selectedWebsite}
@@ -493,27 +552,31 @@ export function WebsitesPage() {
         </div>
       </div>
 
-      <WebsiteFormModal
-        domainGroups={domainGroups}
-        isLoadingDomainGroups={isLoadingDomainGroups}
-        isSubmitting={isSubmittingWebsite}
-        open={isWebsiteModalOpen}
-        website={editingWebsite}
-        onClose={() => {
-          setIsWebsiteModalOpen(false);
-          setEditingWebsite(null);
-        }}
-        onSubmit={handleWebsiteSubmit}
-      />
+      {canWriteWebsites ? (
+        <WebsiteFormModal
+          domainGroups={domainGroups}
+          isLoadingDomainGroups={isLoadingDomainGroups}
+          isSubmitting={isSubmittingWebsite}
+          open={isWebsiteModalOpen}
+          website={editingWebsite}
+          onClose={() => {
+            setIsWebsiteModalOpen(false);
+            setEditingWebsite(null);
+          }}
+          onSubmit={handleWebsiteSubmit}
+        />
+      ) : null}
 
-      <ClaimCurrentDomainModal
-        isSubmitting={isClaimingDomain}
-        open={isClaimModalOpen}
-        selectedWebsiteId={selectedWebsiteId}
-        websites={websites}
-        onClose={() => setIsClaimModalOpen(false)}
-        onSubmit={handleClaimCurrentDomain}
-      />
+      {canWriteWebsites ? (
+        <ClaimCurrentDomainModal
+          isSubmitting={isClaimingDomain}
+          open={isClaimModalOpen}
+          selectedWebsiteId={selectedWebsiteId}
+          websites={websites}
+          onClose={() => setIsClaimModalOpen(false)}
+          onSubmit={handleClaimCurrentDomain}
+        />
+      ) : null}
 
       <ConfirmActionDialog
         confirmLabel={
@@ -542,7 +605,7 @@ export function WebsitesPage() {
             ? isSubmittingDomain
             : isDisablingWebsite
         }
-        open={pendingWebsiteAction !== null}
+        open={canWriteWebsites && pendingWebsiteAction !== null}
         title={
           pendingWebsiteAction?.type === "disable-website"
             ? "Vô hiệu hóa website?"

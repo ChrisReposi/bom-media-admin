@@ -82,8 +82,6 @@ export function ConfirmActionDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-(--admin-overlay) data-[state=open]:animate-in data-[state=open]:fade-in motion-reduce:animate-none" />
         <Dialog.Content
-          aria-describedby="confirm-action-description"
-          aria-labelledby="confirm-action-title"
           className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-(--admin-border) bg-(--admin-surface) p-5 shadow-(--admin-shadow) duration-(--admin-motion-fast) data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95 motion-reduce:animate-none"
           onEscapeKeyDown={(event) => {
             if (isSubmitting) {
@@ -111,16 +109,12 @@ export function ConfirmActionDialog({
             </span>
 
             <div className="min-w-0 space-y-2">
-              <Dialog.Title
-                className="text-lg font-semibold text-(--admin-text-strong)"
-                id="confirm-action-title"
-              >
+              {/* Radix wires aria-labelledby/aria-describedby to these nodes
+                  with generated ids, so two mounted dialogs cannot collide. */}
+              <Dialog.Title className="text-lg font-semibold text-(--admin-text-strong)">
                 {title}
               </Dialog.Title>
-              <Dialog.Description
-                className="text-sm leading-6 text-(--admin-text)"
-                id="confirm-action-description"
-              >
+              <Dialog.Description className="text-sm leading-6 text-(--admin-text)">
                 {description}
               </Dialog.Description>
             </div>

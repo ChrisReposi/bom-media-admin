@@ -16,13 +16,15 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { ConfirmActionDialog } from "@/components/common/ConfirmActionDialog";
+import { AdminReadOnlyNotice } from "@/components/common/AdminReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { LazyModalFallback } from "@/components/common/LazyModalFallback";
 import { Input } from "@/components/ui/input";
+import { useAdminPermission } from "@/features/auth/useAdminPermission";
 import { VideoCard } from "@/features/videos/components/VideoCard";
 import { VideoCardSkeleton } from "@/features/videos/components/VideoCardSkeleton";
 import { VideosEmptyState } from "@/features/videos/components/VideosEmptyState";
@@ -58,8 +60,82 @@ const LazyCreateVideoModal = lazy(() =>
 
 type StatusActionTarget = Extract<VideoStatus, "READY" | "DISABLED">;
 
+type VideoListQueryState = {
+  page: number;
+  status: VideoStatus;
+  search: string;
+  filterKey: string;
+};
+
+type VideoListQueryUpdate = Partial<{
+  page: number;
+  status: VideoStatus;
+  search: string;
+  filterKey: string;
+}>;
+
+type VideoListNavigationState = {
+  fromVideoList: string;
+};
+
 function normalizeVideoSearchInput(value: string): string {
   return value.trim().replace(/\s+/g, " ").slice(0, VIDEOS_SEARCH_MAX_LENGTH);
+}
+
+function parseVideoListPage(value: string | null): number {
+  if (!value || !/^\d+$/.test(value)) {
+    return 1;
+  }
+
+  const page = Number(value);
+  return Number.isSafeInteger(page) && page >= 1 ? page : 1;
+}
+
+function isVideoStatus(value: string | null): value is VideoStatus {
+  return VIDEO_STATUS_OPTIONS.some((status) => status === value);
+}
+
+function parseVideoListQuery(
+  searchParams: URLSearchParams,
+): VideoListQueryState {
+  const rawStatus = searchParams.get("status");
+  const rawSearch = normalizeVideoSearchInput(searchParams.get("search") ?? "");
+  const normalizedFilterKey = normalizeVideoFilterKeyInput(
+    searchParams.get("filterKey") ?? "",
+  );
+
+  return {
+    page: parseVideoListPage(searchParams.get("page")),
+    status: isVideoStatus(rawStatus) ? rawStatus : DEFAULT_VIDEO_STATUS_FILTER,
+    search: rawSearch.length >= VIDEOS_SEARCH_MIN_LENGTH ? rawSearch : "",
+    filterKey: isValidVideoFilterKey(normalizedFilterKey)
+      ? normalizedFilterKey
+      : "",
+  };
+}
+
+function buildVideoListSearchParams(
+  query: VideoListQueryState,
+): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  if (query.page > 1) {
+    searchParams.set("page", String(query.page));
+  }
+
+  if (query.status !== DEFAULT_VIDEO_STATUS_FILTER) {
+    searchParams.set("status", query.status);
+  }
+
+  if (query.search) {
+    searchParams.set("search", query.search);
+  }
+
+  if (query.filterKey) {
+    searchParams.set("filterKey", query.filterKey);
+  }
+
+  return searchParams;
 }
 
 const videoStatusLabels: Record<VideoStatus, string> = {
@@ -80,12 +156,24 @@ function getTabClass(isActive: boolean): string {
 }
 
 export function VideosPage() {
+  const canWriteVideos = useAdminPermission("video.write");
+  const canUploadVideos = useAdminPermission("upload.write");
+  const canCreateVideos = canWriteVideos && canUploadVideos;
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const videoListQuery = useMemo(
+    () => parseVideoListQuery(searchParams),
+    [searchParams],
+  );
+  const {
+    page,
+    status: statusFilter,
+    search: appliedSearch,
+    filterKey: appliedFilterKey,
+  } = videoListQuery;
   const [videos, setVideos] = useState<VideoAsset[]>([]);
   const [meta, setMeta] = useState<VideosListResponse["meta"] | null>(null);
-  const [statusFilter, setStatusFilter] = useState<VideoStatus>(
-    DEFAULT_VIDEO_STATUS_FILTER,
-  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefetching, setIsRefetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,17 +186,61 @@ export function VideosPage() {
   const [statusUpdatingVideoId, setStatusUpdatingVideoId] = useState<
     string | null
   >(null);
-  const [page, setPage] = useState(1);
   const [limit] = useState(20);
-  const [searchInput, setSearchInput] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [filterKeyInput, setFilterKeyInput] = useState("");
-  const [appliedFilterKey, setAppliedFilterKey] = useState("");
+  const [searchInput, setSearchInput] = useState(appliedSearch);
+  const [filterKeyInput, setFilterKeyInput] = useState(appliedFilterKey);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [filterKeyError, setFilterKeyError] = useState<string | null>(null);
   const videoListAbortRef = useRef<AbortController | null>(null);
   const videoListRequestVersionRef = useRef(0);
   const hasLoadedVideoListRef = useRef(false);
+
+  useEffect(() => {
+    if (canWriteVideos) {
+      return;
+    }
+
+    setStatusActionVideo(null);
+    setStatusActionTarget(null);
+    setModalOpen(false);
+  }, [canWriteVideos]);
+
+  const updateVideoListQuery = useCallback(
+    (
+      update: VideoListQueryUpdate,
+      options?: {
+        replace?: boolean;
+      },
+    ) => {
+      const nextQuery: VideoListQueryState = {
+        page,
+        status: statusFilter,
+        search: appliedSearch,
+        filterKey: appliedFilterKey,
+        ...update,
+      };
+
+      setSearchParams(buildVideoListSearchParams(nextQuery), {
+        replace: options?.replace,
+      });
+    },
+    [appliedFilterKey, appliedSearch, page, setSearchParams, statusFilter],
+  );
+
+  useEffect(() => {
+    const canonicalSearchParams = buildVideoListSearchParams(videoListQuery);
+
+    if (canonicalSearchParams.toString() !== searchParams.toString()) {
+      setSearchParams(canonicalSearchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, videoListQuery]);
+
+  useEffect(() => {
+    setSearchInput(appliedSearch);
+    setFilterKeyInput(appliedFilterKey);
+    setSearchError(null);
+    setFilterKeyError(null);
+  }, [appliedFilterKey, appliedSearch]);
 
   const fetchVideos = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -153,7 +285,10 @@ export function VideosPage() {
           response.meta.totalPages > 0 &&
           response.meta.page > response.meta.totalPages
         ) {
-          setPage(response.meta.totalPages);
+          updateVideoListQuery(
+            { page: response.meta.totalPages },
+            { replace: true },
+          );
           return;
         }
 
@@ -189,7 +324,14 @@ export function VideosPage() {
         }
       }
     },
-    [appliedFilterKey, appliedSearch, limit, page, statusFilter],
+    [
+      appliedFilterKey,
+      appliedSearch,
+      limit,
+      page,
+      statusFilter,
+      updateVideoListQuery,
+    ],
   );
 
   useEffect(() => {
@@ -217,8 +359,7 @@ export function VideosPage() {
       return;
     }
 
-    setStatusFilter(nextStatus);
-    setPage(1);
+    updateVideoListQuery({ page: 1, status: nextStatus });
   }
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -239,10 +380,9 @@ export function VideosPage() {
       return;
     }
 
-    setAppliedSearch(normalizedSearch);
     setSearchInput(normalizedSearch);
     setSearchError(null);
-    setPage(1);
+    updateVideoListQuery({ page: 1, search: normalizedSearch });
   }
 
   function handleClearSearch(): void {
@@ -251,9 +391,8 @@ export function VideosPage() {
     }
 
     setSearchInput("");
-    setAppliedSearch("");
     setSearchError(null);
-    setPage(1);
+    updateVideoListQuery({ page: 1, search: "" });
   }
 
   function handleFilterKeySubmit(event: FormEvent<HTMLFormElement>): void {
@@ -275,11 +414,10 @@ export function VideosPage() {
       return;
     }
 
-    setAppliedFilterKey(normalizedFilterKey);
     setFilterKeyInput(normalizedFilterKey);
     setFilterKeyError(null);
     setSearchError(null);
-    setPage(1);
+    updateVideoListQuery({ page: 1, filterKey: normalizedFilterKey });
   }
 
   function handleClearFilterKey(): void {
@@ -288,13 +426,17 @@ export function VideosPage() {
     }
 
     setFilterKeyInput("");
-    setAppliedFilterKey("");
     setFilterKeyError(null);
     setSearchError(null);
-    setPage(1);
+    updateVideoListQuery({ page: 1, filterKey: "" });
   }
 
   function handleRequestStatusToggle(video: VideoAsset): void {
+    if (!canWriteVideos) {
+      toast.error("Bạn không có quyền thay đổi trạng thái video.");
+      return;
+    }
+
     if (video.status === "READY") {
       setStatusActionVideo(video);
       setStatusActionTarget("DISABLED");
@@ -308,7 +450,7 @@ export function VideosPage() {
   }
 
   async function handleConfirmStatusChange(): Promise<void> {
-    if (!statusActionVideo || !statusActionTarget) {
+    if (!canWriteVideos || !statusActionVideo || !statusActionTarget) {
       return;
     }
 
@@ -409,12 +551,16 @@ export function VideosPage() {
             Tải lại
           </Button>
 
-          <Button type="button" onClick={() => setModalOpen(true)}>
-            <Plus className="size-4" />
-            Thêm video
-          </Button>
+          {canCreateVideos ? (
+            <Button type="button" onClick={() => setModalOpen(true)}>
+              <Plus className="size-4" />
+              Thêm video
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {!canWriteVideos ? <AdminReadOnlyNotice /> : null}
 
       <div className="space-y-4 rounded-lg border border-(--admin-border) bg-(--admin-surface) p-4 shadow-sm">
         <div
@@ -449,8 +595,13 @@ export function VideosPage() {
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--admin-text-muted)" />
                 <Input
+                  aria-describedby={
+                    isSearchInputTooShort ? "videos-search-hint" : undefined
+                  }
                   aria-label="Tìm video theo tiêu đề"
                   className="h-10 bg-(--admin-input-bg) pl-9 pr-9 text-(--admin-text-strong)"
+                  id="videos-search"
+                  name="videosSearch"
                   placeholder="Tìm theo tiêu đề video"
                   type="search"
                   value={searchInput}
@@ -482,7 +633,10 @@ export function VideosPage() {
               </Button>
             </form>
             {isSearchInputTooShort ? (
-              <p className="mt-2 text-xs text-(--admin-text-muted)">
+              <p
+                className="mt-2 text-xs text-(--admin-text-muted)"
+                id="videos-search-hint"
+              >
                 Nhập ít nhất {VIDEOS_SEARCH_MIN_LENGTH} ký tự để tìm video.
               </p>
             ) : null}
@@ -495,9 +649,19 @@ export function VideosPage() {
             >
               <div className="relative flex-1">
                 <Input
+                  aria-describedby={
+                    filterKeyError || isFilterKeyInputInvalid
+                      ? "videos-filter-key-error"
+                      : undefined
+                  }
+                  aria-invalid={
+                    filterKeyError || isFilterKeyInputInvalid ? true : undefined
+                  }
                   aria-label="Lọc video theo key phân loại"
                   className="h-10 bg-(--admin-input-bg) pr-9 text-(--admin-text-strong)"
+                  id="videos-filter-key"
                   list="video-filter-key-suggestions"
+                  name="videosFilterKey"
                   placeholder="Lọc theo key, ví dụ: sml, msa"
                   value={filterKeyInput}
                   onChange={(event) => {
@@ -533,7 +697,10 @@ export function VideosPage() {
               </Button>
             </form>
             {filterKeyError || isFilterKeyInputInvalid ? (
-              <p className="mt-2 text-xs text-(--admin-danger)">
+              <p
+                className="mt-2 text-xs text-(--admin-danger)"
+                id="videos-filter-key-error"
+              >
                 {filterKeyError ??
                   (normalizedFilterKeyInput === "all"
                     ? "Không sử dụng all làm key lọc."
@@ -613,7 +780,9 @@ export function VideosPage() {
               size="sm"
               type="button"
               variant="outline"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              onClick={() =>
+                updateVideoListQuery({ page: Math.max(1, page - 1) })
+              }
             >
               <ChevronLeft className="size-4" />
               Trước
@@ -628,7 +797,7 @@ export function VideosPage() {
               size="sm"
               type="button"
               variant="outline"
-              onClick={() => setPage((current) => current + 1)}
+              onClick={() => updateVideoListQuery({ page: page + 1 })}
             >
               Sau
               <ChevronRight className="size-4" />
@@ -690,7 +859,9 @@ export function VideosPage() {
           </p>
         </section>
       ) : !hasVideos ? (
-        <VideosEmptyState onCreate={() => setModalOpen(true)} />
+        <VideosEmptyState
+          onCreate={canCreateVideos ? () => setModalOpen(true) : undefined}
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {videos.map((video) => (
@@ -698,10 +869,19 @@ export function VideosPage() {
               key={video.id}
               video={video}
               isStatusUpdating={statusUpdatingVideoId === video.id}
-              onOpen={(selectedVideo) =>
-                navigate(`/videos/${selectedVideo.id}`)
+              onOpen={(selectedVideo) => {
+                const returnTo = `${location.pathname}${location.search}`;
+                const navigationState: VideoListNavigationState = {
+                  fromVideoList: returnTo,
+                };
+
+                navigate(`/videos/${selectedVideo.id}`, {
+                  state: navigationState,
+                });
+              }}
+              onRequestStatusToggle={
+                canWriteVideos ? handleRequestStatusToggle : undefined
               }
-              onRequestStatusToggle={handleRequestStatusToggle}
             />
           ))}
         </div>
@@ -724,7 +904,11 @@ export function VideosPage() {
           ) : null
         }
         isSubmitting={isStatusActionSubmitting}
-        open={statusActionVideo !== null && statusActionTarget !== null}
+        open={
+          canWriteVideos &&
+          statusActionVideo !== null &&
+          statusActionTarget !== null
+        }
         title={statusActionTitle}
         variant={isStatusActionDisable ? "warning" : "default"}
         onConfirm={handleConfirmStatusChange}
@@ -735,7 +919,7 @@ export function VideosPage() {
         }}
       />
 
-      {modalOpen ? (
+      {modalOpen && canCreateVideos ? (
         <Suspense
           fallback={<LazyModalFallback label="Đang tải biểu mẫu video..." />}
         >

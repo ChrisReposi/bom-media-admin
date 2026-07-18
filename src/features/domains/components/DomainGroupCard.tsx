@@ -6,6 +6,7 @@ import type { DomainGroup } from "@/features/domains/domainTypes";
 type DomainGroupCardProps = {
   group: DomainGroup;
   isBusy: boolean;
+  canWrite: boolean;
   onEdit: (group: DomainGroup) => void;
   onDisable: (group: DomainGroup) => void;
 };
@@ -13,6 +14,7 @@ type DomainGroupCardProps = {
 export function DomainGroupCard({
   group,
   isBusy,
+  canWrite,
   onEdit,
   onDisable,
 }: DomainGroupCardProps) {
@@ -47,28 +49,30 @@ export function DomainGroupCard({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            disabled={isBusy}
-            size="sm"
-            type="button"
-            variant="outline"
-            onClick={() => onEdit(group)}
-          >
-            <Edit2 className="size-4" />
-            Edit
-          </Button>
-          <Button
-            disabled={isBusy || isDisabled}
-            size="sm"
-            type="button"
-            variant="outline"
-            onClick={() => onDisable(group)}
-          >
-            <PowerOff className="size-4" />
-            Disable
-          </Button>
-        </div>
+        {canWrite ? (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={isBusy}
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => onEdit(group)}
+            >
+              <Edit2 className="size-4" />
+              Edit
+            </Button>
+            <Button
+              disabled={isBusy || isDisabled}
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => onDisable(group)}
+            >
+              <PowerOff className="size-4" />
+              Disable
+            </Button>
+          </div>
+        ) : null}
       </div>
     </article>
   );
