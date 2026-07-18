@@ -10,6 +10,12 @@ import {
   updateAuthSessionFromRefresh,
 } from "@/features/auth/authSessionAccessor";
 import type { RefreshAdminTokenResponse } from "@/features/auth/authTypes";
+import {
+  publishAuthEvent,
+  readRefreshHandoff,
+  withCrossTabRefreshLock,
+  writeRefreshHandoff,
+} from "@/features/auth/authCrossTab";
 import { normalizeApiError } from "@/lib/api/apiError";
 
 const API_BASE_URL =
@@ -181,7 +187,7 @@ function refreshAccessTokenOnce(): Promise<string> {
 }
 
 async function refreshAccessToken(): Promise<string> {
-  const { refreshToken } = getAuthSessionSnapshot();
+  const refreshToken = getAuthSessionSnapshot().refreshToken;
 
   if (!refreshToken) {
     handleRefreshFailure();
@@ -189,20 +195,52 @@ async function refreshAccessToken(): Promise<string> {
   }
 
   try {
-    const response = await axiosBaseClient.post<RefreshAdminTokenResponse>(
-      "/admin/auth/refresh",
-      { refreshToken },
-    );
+    return await withCrossTabRefreshLock(async () => {
+      const current = getAuthSessionSnapshot();
+      if (
+        current.refreshToken &&
+        current.refreshToken !== refreshToken &&
+        current.accessToken
+      ) {
+        return current.accessToken;
+      }
+      if (current.refreshToken !== refreshToken) {
+        throw new axios.CanceledError("Auth session changed.");
+      }
 
-    if (getAuthSessionSnapshot().refreshToken !== refreshToken) {
-      throw new axios.CanceledError("Auth session changed.");
-    }
+      const handoff = await readRefreshHandoff(refreshToken);
+      if (handoff) {
+        updateAuthSessionFromRefresh({
+          message: "Admin session synchronized across tabs.",
+          admin: handoff.admin,
+          tokens: handoff.tokens,
+        });
+        advanceAuthSessionVersion(handoff.tokens.accessToken);
+        hasHandledRefreshFailure = false;
+        return handoff.tokens.accessToken;
+      }
 
-    updateAuthSessionFromRefresh(response.data);
-    advanceAuthSessionVersion(response.data.tokens.accessToken);
-    hasHandledRefreshFailure = false;
+      const response = await axiosBaseClient.post<RefreshAdminTokenResponse>(
+        "/admin/auth/refresh",
+        { refreshToken },
+      );
 
-    return response.data.tokens.accessToken;
+      if (getAuthSessionSnapshot().refreshToken !== refreshToken) {
+        throw new axios.CanceledError("Auth session changed.");
+      }
+
+      updateAuthSessionFromRefresh(response.data);
+      await writeRefreshHandoff(refreshToken, response.data);
+      publishAuthEvent({
+        type: "AUTH_UPDATED",
+        admin: response.data.admin,
+        tokens: response.data.tokens,
+      });
+      advanceAuthSessionVersion(response.data.tokens.accessToken);
+      hasHandledRefreshFailure = false;
+
+      return response.data.tokens.accessToken;
+    });
   } catch (error) {
     if (axios.isCancel(error)) {
       throw error;
@@ -230,4 +268,5 @@ function handleRefreshFailure(reason = SESSION_EXPIRED_MESSAGE): void {
   hasHandledRefreshFailure = true;
   advanceAuthSessionVersion(null);
   clearAuthSession(reason);
+  publishAuthEvent({ type: "AUTH_CLEARED", reason });
 }

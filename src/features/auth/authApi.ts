@@ -13,6 +13,9 @@ import type {
   RefreshAdminTokenResponse,
   ChangeAdminPasswordRequest,
   ChangeAdminPasswordResponse,
+  ChangeOwnAdminPasswordRequest,
+  AdminOwnSessionListResponse,
+  RevokeOwnAdminSessionResponse,
 } from "./authTypes";
 
 function readApiMessage(data: unknown): string | null {
@@ -91,7 +94,7 @@ export async function getCurrentAdmin(): Promise<MeAdminResponse> {
 export async function logoutAdmin(
   payload: LogoutAdminRequest,
 ): Promise<LogoutAdminResponse> {
-  const response = await axiosBaseClient.post<LogoutAdminResponse>(
+  const response = await axiosClient.post<LogoutAdminResponse>(
     "/admin/auth/logout",
     payload,
   );
@@ -107,5 +110,34 @@ export async function changeAdminPassword(
     payload,
   );
 
+  return response.data;
+}
+
+export async function changeOwnAdminPassword(
+  payload: ChangeOwnAdminPasswordRequest,
+): Promise<ChangeAdminPasswordResponse> {
+  const response = await axiosClient.post<ChangeAdminPasswordResponse>(
+    "/admin/auth/change-own-password",
+    payload,
+  );
+  return response.data;
+}
+
+export async function listOwnAdminSessions(
+  signal?: AbortSignal,
+): Promise<AdminOwnSessionListResponse> {
+  const response = await axiosClient.get<AdminOwnSessionListResponse>(
+    "/admin/auth/sessions",
+    { signal },
+  );
+  return response.data;
+}
+
+export async function revokeOwnAdminSession(
+  sessionId: string,
+): Promise<RevokeOwnAdminSessionResponse> {
+  const response = await axiosClient.post<RevokeOwnAdminSessionResponse>(
+    `/admin/auth/sessions/${sessionId}/revoke`,
+  );
   return response.data;
 }

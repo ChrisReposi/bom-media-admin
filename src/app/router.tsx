@@ -39,6 +39,11 @@ const SettingsPage = lazy(() =>
     default: module.SettingsPage,
   })),
 );
+const ChangePasswordRequiredPage = lazy(() =>
+  import("@/pages/ChangePasswordRequiredPage").then((module) => ({
+    default: module.ChangePasswordRequiredPage,
+  })),
+);
 
 function withRouteFallback(element: ReactNode) {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -57,6 +62,10 @@ export const router = createBrowserRouter([
   {
     element: <ProtectedRoute />,
     children: [
+      {
+        path: "/change-password-required",
+        element: withRouteFallback(<ChangePasswordRequiredPage />),
+      },
       {
         element: <MainLayout />,
         children: [

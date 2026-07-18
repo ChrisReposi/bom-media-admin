@@ -15,7 +15,11 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/common/ConfirmActionDialog";
 import { clearCredentials, logoutAdminThunk } from "@/features/auth/authSlice";
+import { getLogoutFailurePolicy } from "@/features/auth/logoutPolicy";
+import { publishAuthEvent } from "@/features/auth/authCrossTab";
+import { isNormalizedApiError, normalizeApiError } from "@/lib/api/apiError";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { persistor } from "@/store";
 
@@ -74,24 +78,46 @@ function SidebarNav({ onNavigate }: SidebarNavProps) {
 
 type LogoutButtonProps = {
   isLoggingOut: boolean;
+  failureMessage: string | null;
   onLogout: () => void;
+  onRequestLocalClear: () => void;
 };
 
-function LogoutButton({ isLoggingOut, onLogout }: LogoutButtonProps) {
+function LogoutButton({
+  isLoggingOut,
+  failureMessage,
+  onLogout,
+  onRequestLocalClear,
+}: LogoutButtonProps) {
   return (
-    <button
-      className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-sm font-medium text-(--admin-text) transition-colors hover:bg-(--admin-danger-soft) hover:text-(--admin-danger) disabled:cursor-not-allowed disabled:opacity-60"
-      disabled={isLoggingOut}
-      type="button"
-      onClick={onLogout}
-    >
-      {isLoggingOut ? (
-        <Loader2 className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
-      ) : (
-        <LogOut className="size-4 shrink-0" />
-      )}
-      <span>{isLoggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</span>
-    </button>
+    <div className="space-y-2">
+      <button
+        className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-sm font-medium text-(--admin-text) transition-colors hover:bg-(--admin-danger-soft) hover:text-(--admin-danger) disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={isLoggingOut}
+        type="button"
+        onClick={onLogout}
+      >
+        {isLoggingOut ? (
+          <Loader2 className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
+        ) : (
+          <LogOut className="size-4 shrink-0" />
+        )}
+        <span>{isLoggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</span>
+      </button>
+
+      {failureMessage ? (
+        <div className="rounded-md border border-(--admin-warning) bg-(--admin-warning-soft) p-2 text-xs text-(--admin-text)">
+          <p>{failureMessage}</p>
+          <button
+            className="mt-2 font-semibold text-(--admin-danger) underline underline-offset-2"
+            type="button"
+            onClick={onRequestLocalClear}
+          >
+            Chỉ xóa phiên trên thiết bị này
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -115,6 +141,10 @@ export function MainLayout() {
   const admin = useAppSelector((state) => state.auth.admin);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [logoutFailureMessage, setLogoutFailureMessage] = useState<
+    string | null
+  >(null);
+  const [isLocalClearConfirmOpen, setIsLocalClearConfirmOpen] = useState(false);
 
   async function handleLogout(): Promise<void> {
     if (isLoggingOut) {
@@ -122,6 +152,7 @@ export function MainLayout() {
     }
 
     setIsLoggingOut(true);
+    setLogoutFailureMessage(null);
 
     try {
       const result = await dispatch(logoutAdminThunk()).unwrap();
@@ -135,14 +166,28 @@ export function MainLayout() {
       }
 
       toast.warning(result.message);
-    } catch {
-      dispatch(clearCredentials());
-      await persistor.flush();
-      navigate("/login", { replace: true });
-      toast.warning("Đã đăng xuất khỏi trình duyệt này.");
+    } catch (error) {
+      const normalizedError = isNormalizedApiError(error)
+        ? error
+        : normalizeApiError(error);
+      const policy = getLogoutFailurePolicy(normalizedError);
+
+      setLogoutFailureMessage(policy.message);
+      toast.error(policy.message);
     } finally {
       setIsLoggingOut(false);
     }
+  }
+
+  async function clearLocalSessionOnly(): Promise<void> {
+    dispatch(clearCredentials());
+    publishAuthEvent({ type: "AUTH_CLEARED" });
+    await persistor.flush();
+    setIsLocalClearConfirmOpen(false);
+    navigate("/login", { replace: true });
+    toast.warning(
+      "Đã xóa phiên trên thiết bị này. Phiên máy chủ có thể vẫn còn hoạt động.",
+    );
   }
 
   const currentNav = navItems.find((item) =>
@@ -154,97 +199,114 @@ export function MainLayout() {
   const currentSectionLabel = currentNav?.label ?? "Quản trị";
 
   return (
-    <Dialog.Root open={isMobileNavOpen} onOpenChange={setIsMobileNavOpen}>
-      <div className="h-dvh overflow-hidden bg-(--admin-app-bg) text-(--admin-text-strong)">
-        <div className="flex h-full min-h-0">
-          <aside className="hidden h-full w-64 shrink-0 flex-col border-r border-(--admin-border) bg-(--admin-sidebar) px-4 py-5 md:flex">
-            <div className="mb-8">
-              <BrandMark />
-            </div>
+    <>
+      <Dialog.Root open={isMobileNavOpen} onOpenChange={setIsMobileNavOpen}>
+        <div className="h-dvh overflow-hidden bg-(--admin-app-bg) text-(--admin-text-strong)">
+          <div className="flex h-full min-h-0">
+            <aside className="hidden h-full w-64 shrink-0 flex-col border-r border-(--admin-border) bg-(--admin-sidebar) px-4 py-5 md:flex">
+              <div className="mb-8">
+                <BrandMark />
+              </div>
 
-            <SidebarNav />
+              <SidebarNav />
 
-            <div className="mt-5 border-t border-(--admin-border) pt-4">
-              <LogoutButton
-                isLoggingOut={isLoggingOut}
-                onLogout={() => void handleLogout()}
-              />
-            </div>
-          </aside>
+              <div className="mt-5 border-t border-(--admin-border) pt-4">
+                <LogoutButton
+                  failureMessage={logoutFailureMessage}
+                  isLoggingOut={isLoggingOut}
+                  onLogout={() => void handleLogout()}
+                  onRequestLocalClear={() => setIsLocalClearConfirmOpen(true)}
+                />
+              </div>
+            </aside>
 
-          <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <header className="shrink-0 border-b border-(--admin-border) bg-(--admin-header) px-4 py-3 backdrop-blur md:px-6">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Dialog.Trigger asChild>
-                    <Button
-                      aria-label="Mở menu điều hướng"
-                      className="md:hidden"
-                      size="icon"
-                      type="button"
-                      variant="outline"
-                    >
-                      <Menu className="size-5" />
-                    </Button>
-                  </Dialog.Trigger>
+            <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <header className="shrink-0 border-b border-(--admin-border) bg-(--admin-header) px-4 py-3 backdrop-blur md:px-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Dialog.Trigger asChild>
+                      <Button
+                        aria-label="Mở menu điều hướng"
+                        className="md:hidden"
+                        size="icon"
+                        type="button"
+                        variant="outline"
+                      >
+                        <Menu className="size-5" />
+                      </Button>
+                    </Dialog.Trigger>
 
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--admin-text-muted)">
-                      Bảng điều khiển quản trị
-                    </p>
-                    <p className="truncate text-base font-semibold text-(--admin-text-strong)">
-                      {currentSectionLabel}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium uppercase tracking-wide text-(--admin-text-muted)">
+                        Bảng điều khiển quản trị
+                      </p>
+                      <p className="truncate text-base font-semibold text-(--admin-text-strong)">
+                        {currentSectionLabel}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="hidden max-w-40 truncate rounded-full border border-(--admin-border) bg-(--admin-header-pill) px-3 py-1.5 text-sm text-(--admin-text) sm:inline-block">
+                      {admin?.username ?? "admin"}
+                    </span>
                   </div>
                 </div>
+              </header>
 
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="hidden max-w-40 truncate rounded-full border border-(--admin-border) bg-(--admin-header-pill) px-3 py-1.5 text-sm text-(--admin-text) sm:inline-block">
-                    {admin?.username ?? "admin"}
-                  </span>
-                </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+                <Outlet />
               </div>
-            </header>
-
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-              <Outlet />
-            </div>
-          </main>
+            </main>
+          </div>
         </div>
-      </div>
 
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-(--admin-overlay) data-[state=open]:animate-in data-[state=open]:fade-in motion-reduce:animate-none md:hidden" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed inset-y-0 left-0 z-50 flex w-[min(18rem,85vw)] flex-col border-r border-(--admin-border) bg-(--admin-sidebar) p-4 shadow-(--admin-shadow) duration-(--admin-motion-normal) data-[state=open]:animate-in data-[state=open]:slide-in-from-left motion-reduce:animate-none md:hidden"
-        >
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <Dialog.Title className="text-lg font-semibold text-(--admin-text-strong)">
-              BOM Media
-            </Dialog.Title>
-            <Dialog.Close asChild>
-              <Button
-                aria-label="Đóng menu điều hướng"
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <X className="size-4" />
-              </Button>
-            </Dialog.Close>
-          </div>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-(--admin-overlay) data-[state=open]:animate-in data-[state=open]:fade-in motion-reduce:animate-none md:hidden" />
+          <Dialog.Content
+            aria-describedby={undefined}
+            className="fixed inset-y-0 left-0 z-50 flex w-[min(18rem,85vw)] flex-col border-r border-(--admin-border) bg-(--admin-sidebar) p-4 shadow-(--admin-shadow) duration-(--admin-motion-normal) data-[state=open]:animate-in data-[state=open]:slide-in-from-left motion-reduce:animate-none md:hidden"
+          >
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <Dialog.Title className="text-lg font-semibold text-(--admin-text-strong)">
+                BOM Media
+              </Dialog.Title>
+              <Dialog.Close asChild>
+                <Button
+                  aria-label="Đóng menu điều hướng"
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X className="size-4" />
+                </Button>
+              </Dialog.Close>
+            </div>
 
-          <SidebarNav onNavigate={() => setIsMobileNavOpen(false)} />
+            <SidebarNav onNavigate={() => setIsMobileNavOpen(false)} />
 
-          <div className="mt-4 border-t border-(--admin-border) pt-4">
-            <LogoutButton
-              isLoggingOut={isLoggingOut}
-              onLogout={() => void handleLogout()}
-            />
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+            <div className="mt-4 border-t border-(--admin-border) pt-4">
+              <LogoutButton
+                failureMessage={logoutFailureMessage}
+                isLoggingOut={isLoggingOut}
+                onLogout={() => void handleLogout()}
+                onRequestLocalClear={() => setIsLocalClearConfirmOpen(true)}
+              />
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <ConfirmActionDialog
+        confirmLabel="Xóa phiên cục bộ"
+        description="Máy chủ chưa xác nhận thu hồi phiên. Thao tác này chỉ xóa token khỏi trình duyệt hiện tại; phiên máy chủ có thể vẫn còn hoạt động cho đến khi hết hạn hoặc được thu hồi."
+        isSubmitting={false}
+        open={isLocalClearConfirmOpen}
+        title="Chỉ xóa phiên trên thiết bị này?"
+        variant="warning"
+        onConfirm={() => void clearLocalSessionOnly()}
+        onOpenChange={setIsLocalClearConfirmOpen}
+      />
+    </>
   );
 }

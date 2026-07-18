@@ -19,9 +19,44 @@ export function ProtectedRoute() {
     );
   }
 
-  if (!isLoggedIn) {
+  const redirect = getProtectedRouteRedirect({
+    isLoggedIn,
+    mustChangePassword: auth.admin?.mustChangePassword ?? false,
+    pathname: location.pathname,
+  });
+
+  if (redirect === "/login") {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  if (redirect === "/change-password-required") {
+    return <Navigate to="/change-password-required" replace />;
+  }
+
+  if (redirect === "/") {
+    return <Navigate to="/" replace />;
+  }
+
   return <Outlet />;
+}
+
+export function getProtectedRouteRedirect(params: {
+  isLoggedIn: boolean;
+  mustChangePassword: boolean;
+  pathname: string;
+}): "/login" | "/change-password-required" | "/" | null {
+  if (!params.isLoggedIn) return "/login";
+  if (
+    params.mustChangePassword &&
+    params.pathname !== "/change-password-required"
+  ) {
+    return "/change-password-required";
+  }
+  if (
+    !params.mustChangePassword &&
+    params.pathname === "/change-password-required"
+  ) {
+    return "/";
+  }
+  return null;
 }

@@ -7,6 +7,8 @@ import {
 import { normalizeApiError, type NormalizedApiError } from "@/lib/api/apiError";
 
 import { loginAdmin, logoutAdmin, refreshAdminSession } from "./authApi";
+import { publishAuthEvent } from "./authCrossTab";
+import { getLogoutFailurePolicy } from "./logoutPolicy";
 import type {
   AdminAuthTokens,
   AuthState,
@@ -45,7 +47,13 @@ export const loginAdminThunk = createAsyncThunk<
   { rejectValue: string }
 >("auth/loginAdmin", async (payload, { rejectWithValue }) => {
   try {
-    return await loginAdmin(payload);
+    const response = await loginAdmin(payload);
+    publishAuthEvent({
+      type: "IDENTITY_CHANGED",
+      admin: response.admin,
+      tokens: response.tokens,
+    });
+    return response;
   } catch (error) {
     const message =
       error instanceof Error
@@ -62,7 +70,13 @@ export const bootstrapAdminSessionThunk = createAsyncThunk<
   { rejectValue: NormalizedApiError }
 >("auth/bootstrapAdminSession", async (payload, { rejectWithValue }) => {
   try {
-    return await refreshAdminSession(payload);
+    const response = await refreshAdminSession(payload);
+    publishAuthEvent({
+      type: "AUTH_UPDATED",
+      admin: response.admin,
+      tokens: response.tokens,
+    });
+    return response;
   } catch (error) {
     return rejectWithValue(normalizeApiError(error));
   }
@@ -71,20 +85,25 @@ export const bootstrapAdminSessionThunk = createAsyncThunk<
 export const logoutAdminThunk = createAsyncThunk<
   LogoutAdminThunkResult,
   void,
-  { state: AuthThunkState }
->("auth/logoutAdmin", async (_, { getState }) => {
+  { state: AuthThunkState; rejectValue: NormalizedApiError }
+>("auth/logoutAdmin", async (_, { getState, rejectWithValue }) => {
   const refreshToken = getState().auth.refreshToken;
 
   if (!refreshToken) {
-    return {
-      revokeAttempted: false,
-      revokeConfirmed: false,
-      message: "Đã đăng xuất khỏi trình duyệt này.",
-    };
+    return rejectWithValue({
+      status: null,
+      message: "Không có refresh token để xác nhận thu hồi phiên trên máy chủ.",
+      isCanceled: false,
+      isAuthError: false,
+      isNetworkError: false,
+      isRateLimitError: false,
+      isServerError: false,
+    });
   }
 
   try {
     const response: LogoutAdminResponse = await logoutAdmin({ refreshToken });
+    publishAuthEvent({ type: "AUTH_CLEARED" });
 
     return {
       revokeAttempted: true,
@@ -93,16 +112,18 @@ export const logoutAdminThunk = createAsyncThunk<
     };
   } catch (error) {
     const normalizedError = normalizeApiError(error);
-    const cannotConfirmMessage =
-      "Đã đăng xuất khỏi trình duyệt này. Không thể xác nhận thu hồi phiên trên máy chủ, vui lòng đăng nhập lại nếu cần.";
+    const policy = getLogoutFailurePolicy(normalizedError);
 
-    return {
-      revokeAttempted: true,
-      revokeConfirmed: false,
-      message: normalizedError.isRateLimitError
-        ? "Đã đăng xuất khỏi trình duyệt này. Có quá nhiều yêu cầu nên chưa thể xác nhận thu hồi phiên trên máy chủ."
-        : cannotConfirmMessage,
-    };
+    if (policy.clearLocalSession) {
+      publishAuthEvent({ type: "AUTH_CLEARED", reason: policy.message });
+      return {
+        revokeAttempted: true,
+        revokeConfirmed: false,
+        message: policy.message,
+      };
+    }
+
+    return rejectWithValue(normalizedError);
   }
 });
 
@@ -137,6 +158,11 @@ const authSlice = createSlice({
       state.status = "authenticated";
       state.error = null;
       state.isAuthenticated = true;
+    },
+    updateAdminProfile: (state, action: PayloadAction<SafeAdmin>) => {
+      if (state.admin?.id === action.payload.id) {
+        state.admin = action.payload;
+      }
     },
     clearCredentials: (state, action: PayloadAction<string | undefined>) => {
       state.admin = null;
@@ -226,6 +252,12 @@ const authSlice = createSlice({
         state.status = "idle";
         state.error = null;
         state.isAuthenticated = false;
+      })
+      .addCase(logoutAdminThunk.rejected, (state, action) => {
+        state.status = state.isAuthenticated ? "authenticated" : state.status;
+        state.error =
+          action.payload?.message ??
+          "Không thể xác nhận đăng xuất với máy chủ. Vui lòng thử lại.";
       });
   },
 });
@@ -235,6 +267,7 @@ export const {
   setAuthChecking,
   setAuthError,
   setCredentials,
+  updateAdminProfile,
   updateTokens,
 } = authSlice.actions;
 export const authReducer = authSlice.reducer;

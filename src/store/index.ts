@@ -12,7 +12,15 @@ import {
 } from "redux-persist";
 import storage from "redux-persist/lib/storage";
 
-import { clearCredentials, updateTokens } from "@/features/auth/authSlice";
+import {
+  clearCredentials,
+  setCredentials,
+  updateTokens,
+} from "@/features/auth/authSlice";
+import {
+  getAuthCrossTabAction,
+  subscribeAuthEvents,
+} from "@/features/auth/authCrossTab";
 import { configureAuthSessionHandlers } from "@/features/auth/authSessionAccessor";
 import { setAuthAccessToken } from "@/features/auth/authTokenAccessor";
 
@@ -52,6 +60,35 @@ configureAuthSessionHandlers({
   clearSession: (reason) => {
     store.dispatch(clearCredentials(reason));
   },
+});
+
+subscribeAuthEvents((event) => {
+  const currentAdminId = store.getState().auth.admin?.id ?? null;
+  const action = getAuthCrossTabAction(currentAdminId, event);
+  if (action === "clear") {
+    const reason = event.type === "AUTH_CLEARED" ? event.reason : undefined;
+    store.dispatch(clearCredentials(reason));
+    void persistor.flush().then(() => {
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname !== "/login"
+      ) {
+        window.location.assign("/login");
+      }
+    });
+    return;
+  }
+
+  if (action === "update" && event.type === "AUTH_UPDATED") {
+    store.dispatch(updateTokens({ admin: event.admin, tokens: event.tokens }));
+    return;
+  }
+
+  if (event.type === "AUTH_CLEARED") return;
+  store.dispatch(setCredentials({ admin: event.admin, tokens: event.tokens }));
+  void persistor.flush().then(() => {
+    if (typeof window !== "undefined") window.location.reload();
+  });
 });
 
 store.subscribe(() => {
