@@ -2,6 +2,24 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-18 — Canonical video share link workflow (feature branch)
+
+### Changed
+
+- Single-selection mode now calls the idempotent canonical endpoint: button `Lấy URL canonical`; toasts distinguish `Đã tạo URL canonical.` (CREATED) from `Đã sử dụng lại URL canonical hiện có.` (REUSED); label/maxViews/expiresAt inputs are disabled with an explanation. Multiple-selection keeps the generic bundle flow with button `Tạo review bundle` and the notice that bundle links are not per-video canonical URLs.
+- New `CanonicalShareLinkCard`: Canonical badge, CREATED/REUSED chip, website/video/alias/createdAt, masked snapshot summary, copy button — and the canonical publicUrl rendered **verbatim** (never re-normalized; it is the recorded provenance value). Raw token shown once only on CREATED; nothing canonical is persisted client-side. No ownership/approval claims.
+- `websiteApi.createCanonicalShareLink/getCanonicalShareLink`, `CanonicalShareLinkResponse` type, and pure `canonicalShareLinkPolicy.ts` (outcome copy, stable-code → Vietnamese error map incl. DOMAIN_HAS_ACTIVE_CANONICAL_LINKS / VIDEO_HAS_CANONICAL_SHARE_LINK, snapshot summary).
+- `shareLinkUrlUtils` made Node-importable (optional-chained `import.meta.env`) to enable table-driven URL tests; behavior unchanged.
+
+### Verified
+
+- typecheck, lint, **tests 54/54** (7 new: outcome copy, full stable-code map, snapshot summary masking, URL normalization table incl. idempotence on the canonical form and deep-link video ids), format, build, smoke 10/10.
+- Backend pairing proven separately on local MySQL (see API session-log): 20 concurrent create-or-get → 1 CREATED + 19 REUSED with one alias/URL.
+
+### Pending
+
+- Real-browser pass of the new Dashboard flow — NOT_RUN here; wire-level and unit evidence only.
+
 ## 2026-07-18 — Release packaging and CI
 
 ### Changed
