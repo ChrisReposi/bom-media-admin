@@ -2,6 +2,21 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-18 — Release packaging and CI
+
+### Changed
+
+- Created branch `release/2026-07-18-production-hardening` and committed the audited working tree per the persisted manifests (`~/Desktop/bom-media/release-manifests/2026-07-18/`): W1 (21 files, auth/RBAC/session/forced-password + real test script), W2 (41, scoped dashboard, selection modes, video workflows, a11y, filterKey client hardening), W3 (7, owner account management UI). Each commit staged via `git add --pathspec-from-file` and verified name-for-name against its manifest.
+- Added `.github/workflows/ci.yml`: install → typecheck → lint → test → format:check → build → smoke:build → `git diff --check`; concurrency cancel, pinned action majors, Node 22, Yarn only.
+
+### Verified
+
+- Post-commit suite: typecheck, lint, **tests 47/47**, format:check, build, smoke:build (10 checks), `yarn run check`, `git diff --check` — clean tree after every commit.
+
+### Pending
+
+- Push/merge/deploy left to the operator. Deployment order and browser acceptance live in the API repo's `docs/operations/production-release-runbook.md` (API deploys first; Admin dist must be uploaded atomically + Cloudflare purge).
+
 ## 2026-07-18 — CreateVideo filterKey persistence incident
 
 ### Incident
