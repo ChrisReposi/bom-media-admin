@@ -56,7 +56,10 @@ describe("canonical raw-token contract", () => {
     assert.equal(/\brawToken\b/.test(canonicalClientSources), false);
     assert.equal(/\blocalStorage\b/.test(canonicalClientSources), false);
     assert.equal(/\bsessionStorage\b/.test(canonicalClientSources), false);
-    assert.equal(/console\.(?:log|debug)\s*\(/.test(canonicalClientSources), false);
+    assert.equal(
+      /console\.(?:log|debug)\s*\(/.test(canonicalClientSources),
+      false,
+    );
   });
 
   it("retains the evidence disclaimer without a one-time-token section", () => {
@@ -91,6 +94,7 @@ describe("canonical outcome messaging", () => {
       "CANONICAL_LINK_INACTIVE",
       "CANONICAL_DOMAIN_UNAVAILABLE",
       "CANONICAL_EVIDENCE_DRIFT",
+      "CANONICAL_EVIDENCE_INCOMPLETE",
       "CANONICAL_VIDEO_NOT_SHAREABLE",
       "DOMAIN_HAS_ACTIVE_CANONICAL_LINKS",
       "VIDEO_HAS_CANONICAL_SHARE_LINK",
@@ -101,6 +105,22 @@ describe("canonical outcome messaging", () => {
     }
     assert.equal(getCanonicalErrorMessage("UNKNOWN_CODE", "fb"), "fb");
     assert.equal(getCanonicalErrorMessage(undefined, "fb"), "fb");
+  });
+
+  it("maps incomplete DB evidence to an actionable Vietnamese message", () => {
+    const message = getCanonicalErrorMessage(
+      "CANONICAL_EVIDENCE_INCOMPLETE",
+      "fallback",
+    );
+    assert.equal(
+      message,
+      "Video lưu trong cơ sở dữ liệu chưa có mã kiểm tra toàn vẹn. Hãy hoàn tất bước bổ sung checksum trước khi tạo URL canonical.",
+    );
+    assert.notEqual(message, "fallback");
+    assert.equal(
+      /quyền sở hữu|bản quyền đã được chứng minh/i.test(message),
+      false,
+    );
   });
 });
 

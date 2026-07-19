@@ -16,6 +16,8 @@ export const CANONICAL_ERROR_MESSAGES: Record<string, string> = {
     "Domain của URL canonical không còn đúng trạng thái đã ghi nhận. Cần OWNER xem xét.",
   CANONICAL_EVIDENCE_DRIFT:
     "Nội dung video đã thay đổi so với snapshot canonical. Cần OWNER xem xét trước khi tái sử dụng URL.",
+  CANONICAL_EVIDENCE_INCOMPLETE:
+    "Video lưu trong cơ sở dữ liệu chưa có mã kiểm tra toàn vẹn. Hãy hoàn tất bước bổ sung checksum trước khi tạo URL canonical.",
   CANONICAL_VIDEO_NOT_SHAREABLE:
     "Video không còn đủ điều kiện chia sẻ trên website này. URL canonical hiện có được giữ nguyên.",
   DOMAIN_HAS_ACTIVE_CANONICAL_LINKS:

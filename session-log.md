@@ -2,6 +2,22 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-19 — Gate 3B: incomplete canonical evidence UX
+
+### Changed
+
+- Added the minimal stable-code mapping for API `CANONICAL_EVIDENCE_INCOMPLETE` with an actionable Vietnamese checksum-remediation message. No checksum display/storage, canonical type/card change, generic review-bundle change, raw-token behavior change or Dashboard workflow change.
+- Extended the canonical contract test to pin the exact recovery copy and reject ownership/copyright claims.
+
+### Verified
+
+- Focused canonical contract: 12/12 pass. Mutation proof: temporarily removing the new mapping made the intended suite fail 2/12; after restoring the uncommitted mutation, 12/12 passed. Full Admin suite: 59/59 pass across 14 suites. `typecheck`, `lint`, `format:check`, focused test formatting, `build`, `smoke:build` (10/10), Yarn dependency `check`, and `git diff --check` pass.
+- No browser or Production access; no push, merge or deploy.
+
+### Pending
+
+- Gate 3C and Gate 4 are outside this change.
+
 ## 2026-07-19 — Gate 2: canonical raw-token display removed
 
 ### Changed
