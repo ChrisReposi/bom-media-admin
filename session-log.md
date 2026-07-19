@@ -2,6 +2,24 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-19 — Gate 2: canonical raw-token display removed
+
+### Changed
+
+- Removed `rawToken` from `CanonicalShareLinkResponse` and removed the canonical card's one-time-secret section. Alias, byte-for-byte backend `publicUrl`, CREATED/REUSED copy, evidence snapshot summary and DMCA disclaimer are unchanged.
+- Generic `CreateShareLinkResponse` and `CreatedShareLinkCard` retain the legacy review-bundle raw-token behavior. No canonical token state, storage, logging or persistence path was added.
+- Added source-contract tests pinning canonical type/card absence, alias/URL display, generic compatibility, disclaimer preservation, and no canonical local/session storage or console logging.
+
+### Verified
+
+- Targeted canonical contract: 11/11 pass. Full Admin suite: 58/58 pass.
+- Mutation proof: temporarily adding `rawToken?: string` back to the canonical type caused the intended contract test to fail 1/11; after removing the uncommitted mutation, 11/11 passed.
+- `typecheck`, `lint`, `format:check`, `build`, `smoke:build` (10/10), `yarn check` (Yarn 1 dependency consistency), `yarn run check` (project script), and `git diff --check` pass. Production and a real browser were not accessed.
+
+### Pending
+
+- Gate 3 and Gate 4 were not started. Deployed/browser verification remains not run.
+
 ## 2026-07-18 — Canonical video share link workflow (feature branch)
 
 ### Changed

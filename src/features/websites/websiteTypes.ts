@@ -183,8 +183,6 @@ export type CanonicalShareLinkResponse = {
   /** Byte-for-byte stable canonical URL — display verbatim, never rebuild. */
   publicUrl: string;
   alias: string;
-  /** Present only on outcome CREATED; never recoverable afterwards. */
-  rawToken?: string;
   evidenceSnapshot: CanonicalEvidenceSnapshotSummary | null;
   canonicalCreatedAt: string;
 };

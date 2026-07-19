@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -8,6 +9,68 @@ import {
   summarizeEvidenceSnapshot,
 } from "../src/features/websites/canonicalShareLinkPolicy";
 import { normalizePublicShareUrl } from "../src/features/websites/shareLinkUrlUtils";
+
+const source = (relativePath: string): string =>
+  readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
+
+const websiteTypesSource = source("src/features/websites/websiteTypes.ts");
+const canonicalTypeSource =
+  websiteTypesSource.match(
+    /export type CanonicalShareLinkResponse = \{[\s\S]*?\n\};/,
+  )?.[0] ?? "";
+const genericTypeSource =
+  websiteTypesSource.match(
+    /export type CreateShareLinkResponse = \{[\s\S]*?\n\};/,
+  )?.[0] ?? "";
+const canonicalCardSource = source(
+  "src/features/dashboard/components/CanonicalShareLinkCard.tsx",
+);
+const genericCardSource = source(
+  "src/features/dashboard/components/CreatedShareLinkCard.tsx",
+);
+const canonicalClientSources = [
+  canonicalCardSource,
+  source("src/features/websites/canonicalShareLinkPolicy.ts"),
+  source("src/features/websites/websiteApi.ts"),
+  source("src/features/dashboard/components/ShareLinkComposer.tsx"),
+  source("src/pages/DashboardPage.tsx"),
+].join("\n");
+
+describe("canonical raw-token contract", () => {
+  it("keeps rawToken absent from the canonical type and result card", () => {
+    assert.ok(canonicalTypeSource, "canonical response type missing");
+    assert.equal(/\brawToken\b/.test(canonicalTypeSource), false);
+    assert.equal(/\btokenHash\b/.test(canonicalTypeSource), false);
+    assert.equal(/\brawToken\b/.test(canonicalCardSource), false);
+    assert.equal(canonicalCardSource.includes("result.publicUrl"), true);
+    assert.equal(canonicalCardSource.includes("result.alias"), true);
+  });
+
+  it("keeps the generic review-bundle one-time token contract", () => {
+    assert.ok(genericTypeSource, "generic response type missing");
+    assert.equal(/\brawToken\b/.test(genericTypeSource), true);
+    assert.equal(genericCardSource.includes("shareLink.rawToken"), true);
+  });
+
+  it("does not persist or log a canonical raw token", () => {
+    assert.equal(/\brawToken\b/.test(canonicalClientSources), false);
+    assert.equal(/\blocalStorage\b/.test(canonicalClientSources), false);
+    assert.equal(/\bsessionStorage\b/.test(canonicalClientSources), false);
+    assert.equal(/console\.(?:log|debug)\s*\(/.test(canonicalClientSources), false);
+  });
+
+  it("retains the evidence disclaimer without a one-time-token section", () => {
+    assert.equal(
+      canonicalCardSource.includes("Nó không tự chứng minh quyền sở hữu"),
+      true,
+    );
+    assert.equal(
+      canonicalCardSource.includes("không bảo đảm kết quả xử lý DMCA"),
+      true,
+    );
+    assert.equal(canonicalCardSource.includes("Raw token"), false);
+  });
+});
 
 describe("canonical outcome messaging", () => {
   it("distinguishes CREATED from REUSED with the specified copy", () => {

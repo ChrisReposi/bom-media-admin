@@ -89,13 +89,6 @@ export function CanonicalShareLinkCard({
           ) : null}
         </dl>
 
-        {result.rawToken ? (
-          <p className="rounded-md border border-(--admin-warning-soft) bg-(--admin-warning-soft) p-2 text-xs text-(--admin-text)">
-            Raw token chỉ hiển thị một lần và không được lưu trong Admin Web:{" "}
-            <span className="font-mono break-all">{result.rawToken}</span>
-          </p>
-        ) : null}
-
         <p className="text-xs text-(--admin-text-muted)">
           URL canonical ổn định cho cặp website–video này và được giữ nguyên
           byte-for-byte cho hồ sơ bản quyền. Nó không tự chứng minh quyền sở hữu
