@@ -1,27 +1,12 @@
 Options -MultiViews
 
-<IfModule mod_rewrite.c>
-  RewriteEngine On
-  RewriteBase /
+RewriteEngine On
+RewriteBase /
 
-  # Do not rewrite API requests if this domain ever proxies /api.
-  RewriteRule ^api(/.*)?$ - [L]
+# Giữ nguyên file và thư mục tồn tại thật
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
 
-  # Serve existing files and directories normally.
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
-  RewriteRule ^ - [L]
-
-  # For extensionless SPA routes like /videos, /websites, /videos/:id,
-  # serve index.html so React Router can handle the route.
-  RewriteCond %{REQUEST_URI} !\.[A-Za-z0-9]{2,8}$
-  RewriteRule ^ index.html [L]
-</IfModule>
-
-<IfModule mod_headers.c>
-  <Files "index.html">
-    Header always set Cache-Control "no-cache, no-store, must-revalidate"
-    Header always set Pragma "no-cache"
-    Header always set Expires "0"
-  </Files>
-</IfModule>
+# Mọi route SPA còn lại trả về index.html
+RewriteRule ^ index.html [L]
