@@ -3,7 +3,6 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { summarizeEvidenceSnapshot } from "@/features/websites/canonicalShareLinkPolicy";
 import type { CanonicalShareLinkResponse } from "@/features/websites/websiteTypes";
 
 type CanonicalShareLinkCardProps = {
@@ -21,7 +20,6 @@ export function CanonicalShareLinkCard({
   websiteName,
 }: CanonicalShareLinkCardProps) {
   const videoTitle = result.shareLink.videos[0]?.title ?? null;
-  const snapshotSummary = summarizeEvidenceSnapshot(result.evidenceSnapshot);
 
   async function handleCopy(): Promise<void> {
     try {
@@ -81,19 +79,7 @@ export function CanonicalShareLinkCard({
             <dt className="shrink-0 text-(--admin-text-muted)">Tạo lúc:</dt>
             <dd>{result.canonicalCreatedAt}</dd>
           </div>
-          {snapshotSummary ? (
-            <div className="flex gap-2">
-              <dt className="shrink-0 text-(--admin-text-muted)">Snapshot:</dt>
-              <dd className="min-w-0 break-words">{snapshotSummary}</dd>
-            </div>
-          ) : null}
         </dl>
-
-        <p className="text-xs text-(--admin-text-muted)">
-          URL canonical ổn định cho cặp website–video này và được giữ nguyên
-          byte-for-byte cho hồ sơ bản quyền. Nó không tự chứng minh quyền sở hữu
-          và không bảo đảm kết quả xử lý DMCA.
-        </p>
       </div>
     </section>
   );

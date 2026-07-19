@@ -8,8 +8,8 @@ import {
 } from "../src/features/dashboard/dashboardSelectionPolicy";
 
 describe("dashboard video selection policy", () => {
-  it("defaults to multiple to preserve current production behavior", () => {
-    assert.equal(DEFAULT_VIDEO_SELECTION_MODE, "multiple");
+  it("defaults to the approved single-video canonical flow", () => {
+    assert.equal(DEFAULT_VIDEO_SELECTION_MODE, "single");
   });
 
   it("multiple mode keeps the existing toggle behavior and selection order", () => {

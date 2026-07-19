@@ -1,6 +1,6 @@
 export type VideoSelectionMode = "single" | "multiple";
 
-export const DEFAULT_VIDEO_SELECTION_MODE: VideoSelectionMode = "multiple";
+export const DEFAULT_VIDEO_SELECTION_MODE: VideoSelectionMode = "single";
 
 /**
  * Pure selection policy for the dashboard video picker. The selection array

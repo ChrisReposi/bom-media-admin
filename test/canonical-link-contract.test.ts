@@ -62,15 +62,17 @@ describe("canonical raw-token contract", () => {
     );
   });
 
-  it("retains the evidence disclaimer without a one-time-token section", () => {
+  it("keeps the simplified canonical card without evidence presentation or a one-time-token section", () => {
     assert.equal(
       canonicalCardSource.includes("Nó không tự chứng minh quyền sở hữu"),
-      true,
+      false,
     );
     assert.equal(
       canonicalCardSource.includes("không bảo đảm kết quả xử lý DMCA"),
-      true,
+      false,
     );
+    assert.equal(canonicalCardSource.includes("snapshotSummary"), false);
+    assert.equal(canonicalCardSource.includes("Snapshot:"), false);
     assert.equal(canonicalCardSource.includes("Raw token"), false);
   });
 });

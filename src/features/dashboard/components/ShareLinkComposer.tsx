@@ -362,18 +362,6 @@ export function ShareLinkComposer({
             </Button>
           </div>
 
-          {isCanonicalMode ? (
-            <p className="mb-4 text-sm text-(--admin-text-muted)">
-              Chế độ một video trả về URL canonical ổn định cho cặp
-              website–video: gọi lại luôn nhận đúng cùng một URL. URL canonical
-              không dùng nhãn, giới hạn lượt xem hay thời hạn.
-            </p>
-          ) : (
-            <p className="mb-4 text-sm text-(--admin-text-muted)">
-              Bundle link không phải canonical source URL riêng của từng video.
-            </p>
-          )}
-
           <div className="grid gap-4 md:grid-cols-3">
             <label className="block text-sm font-medium text-(--admin-text-strong)">
               <span className="mb-2 block">Nhãn</span>
