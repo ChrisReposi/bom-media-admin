@@ -46,7 +46,6 @@ type ReadyVideoPickerProps = {
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
-  onOpenAssignment: () => void;
   onRetrySearch?: () => void;
 };
 
@@ -72,7 +71,6 @@ export function ReadyVideoPicker({
   hasMore,
   isLoadingMore,
   onLoadMore,
-  onOpenAssignment,
   onRetrySearch,
 }: ReadyVideoPickerProps) {
   const [sourceFilter, setSourceFilter] = useState<VideoSourceFilter>("all");
@@ -195,17 +193,6 @@ export function ReadyVideoPicker({
                 hasSelectedWebsite,
               })}
             </p>
-            {hasSelectedWebsite && !searchQuery && !filterKey ? (
-              <Button
-                className="mt-3"
-                size="sm"
-                type="button"
-                variant="outline"
-                onClick={onOpenAssignment}
-              >
-                Gán video cho website
-              </Button>
-            ) : null}
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

@@ -21,10 +21,13 @@ import type {
   ShareLink,
   ShareLinksListResponse,
   UpdateWebsiteDomainPayload,
+  UpdateWebsiteVideoAssignmentsPayload,
+  UpdateWebsiteVideoAssignmentsResponse,
   UpdateWebsitePayload,
   Website,
   WebsiteDomain,
   WebsiteVideoAssignment,
+  WebsiteVideoAssignmentOptionsResponse,
   WebsiteVideosListResponse,
   WebsitesListResponse,
 } from "./websiteTypes";
@@ -280,6 +283,53 @@ export async function getWebsiteVideos(
       signal: options?.signal,
     },
   );
+
+  return response.data;
+}
+
+export type WebsiteVideoAssignmentOptionsQuery = {
+  page: number;
+  limit: number;
+  search?: string;
+  filterKey?: string;
+  sourceType?: string;
+  sortBy?: "createdAt" | "updatedAt" | "publishedAt" | "title";
+  sortOrder?: "asc" | "desc";
+};
+
+export async function getWebsiteVideoAssignmentOptions(
+  websiteId: string,
+  params: WebsiteVideoAssignmentOptionsQuery,
+  options?: { signal?: AbortSignal },
+): Promise<WebsiteVideoAssignmentOptionsResponse> {
+  const response = await axiosClient.get<WebsiteVideoAssignmentOptionsResponse>(
+    `/admin/websites/${websiteId}/video-assignment-options`,
+    {
+      params: {
+        page: params.page,
+        limit: params.limit,
+        search: params.search?.trim() || undefined,
+        filterKey: params.filterKey?.trim() || undefined,
+        sourceType: params.sourceType,
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+      },
+      signal: options?.signal,
+    },
+  );
+
+  return response.data;
+}
+
+export async function updateWebsiteVideoAssignments(
+  websiteId: string,
+  payload: UpdateWebsiteVideoAssignmentsPayload,
+): Promise<UpdateWebsiteVideoAssignmentsResponse> {
+  const response =
+    await axiosClient.patch<UpdateWebsiteVideoAssignmentsResponse>(
+      `/admin/websites/${websiteId}/video-assignments`,
+      payload,
+    );
 
   return response.data;
 }

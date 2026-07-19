@@ -3,6 +3,11 @@ import { normalizeApiError } from "@/lib/api/apiError";
 export const WEBSITE_VIDEO_ASSIGNMENT_ERROR_CODE =
   "VIDEO_NOT_ACTIVE_FOR_WEBSITE";
 
+export const WEBSITE_VIDEO_ASSIGNMENT_REFRESH_ERROR_CODES = new Set([
+  "VIDEO_NOT_ELIGIBLE_FOR_ASSIGNMENT",
+  "WEBSITE_VIDEO_ASSIGNMENT_VIDEO_NOT_FOUND",
+]);
+
 export function isWebsiteVideoAssignmentError(error: unknown): boolean {
   const normalized = normalizeApiError(error);
   return (
@@ -28,6 +33,37 @@ export function reconcileAssignmentErrorSelection(
     ),
   );
   return selectedVideoIds.filter((videoId) => !invalidVideoIdSet.has(videoId));
+}
+
+export function getAssignmentMutationInvalidVideoIds(error: unknown): string[] {
+  const normalized = normalizeApiError(error);
+  if (
+    !WEBSITE_VIDEO_ASSIGNMENT_REFRESH_ERROR_CODES.has(normalized.code ?? "")
+  ) {
+    return [];
+  }
+
+  const values = normalized.details?.invalidVideoIds;
+  return Array.isArray(values)
+    ? values.filter((value): value is string => typeof value === "string")
+    : [];
+}
+
+export function getAssignmentManagementErrorMessage(error: unknown): string {
+  const normalized = normalizeApiError(error);
+
+  switch (normalized.code) {
+    case "WEBSITE_VIDEO_ASSIGNMENT_OVERLAP":
+      return "Một video không thể vừa được gán vừa bị bỏ gán trong cùng lần lưu.";
+    case "WEBSITE_VIDEO_ASSIGNMENT_BATCH_TOO_LARGE":
+      return "Có quá nhiều thay đổi trong một lần lưu. Vui lòng chia thành nhiều lần.";
+    case "VIDEO_NOT_ELIGIBLE_FOR_ASSIGNMENT":
+      return "Một hoặc nhiều video không còn ở trạng thái READY/playable để gán.";
+    case "WEBSITE_VIDEO_ASSIGNMENT_VIDEO_NOT_FOUND":
+      return "Một hoặc nhiều video không còn tồn tại. Danh sách đã được tải lại.";
+    default:
+      return normalized.message || "Không thể cập nhật video cho website.";
+  }
 }
 
 export function isCurrentWebsiteVideoResponse(input: {

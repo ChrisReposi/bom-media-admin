@@ -2,6 +2,25 @@
 
 This file records important project context and changes for future Codex sessions.
 
+## 2026-07-19 — Dashboard bulk website-video assignment dialog
+
+### Changed
+
+- Added one explicit single-click `Quản lý video` entry for the selected website. The old empty-state-only assignment action was removed; `WebsiteQuickSelect` remains a normal one-click selector with no double-click behavior.
+- Replaced the manual single-radio overlay with an accessible Radix Dialog and independent `baselineAssignedIds`/`draftAssignedIds`. The dialog reads authoritative website-scoped assignment options, prechecks every ACTIVE assignment (including IDs outside the current page), supports multiple assign/unassign deltas, assigned-but-ineligible removal, search/filter/load-more, stale-request abort, draft-preserving error recovery and discard confirmation.
+- Saving sends one PATCH, prevents double submission, invalidates/reloads the selected website's shareable-video cache, removes requested unassignments from share-link selection, and clears stale result cards only after success. Assignment state never changes `videoSelectionMode`; the approved default remains `single` and both single/multiple share-link modes remain supported.
+- OWNER/ADMIN UI mutation visibility now follows `website.write`. Added Vietnamese stable-error handling, exact draft-delta/undo helpers, source-contract tests and Dashboard/API/smoke documentation.
+
+### Verified
+
+- Full Admin verification PASS: typecheck; lint with 0 warnings/errors; 70/70 tests across 16 suites; format check; production build; static build smoke 10/10; Yarn dependency check; and `git diff --check`.
+- Mutation proof PASS: temporarily replacing `activeAssignedVideoIds` precheck with an empty baseline made the intended source-contract test fail; the mutation was removed and the contract returned green. No mutation is committed.
+- No real-browser test, Production access, push, merge or deploy occurred.
+
+### Pending
+
+- Staging browser acceptance remains required for focus trap/restoration, Escape/discard behavior, OWNER/ADMIN/STAFF controls, paginated draft persistence and live assignment races.
+
 ## 2026-07-19 — Gate 3B: incomplete canonical evidence UX
 
 ### Changed

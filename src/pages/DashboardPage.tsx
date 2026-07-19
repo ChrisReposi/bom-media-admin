@@ -39,10 +39,10 @@ import type { VideoAsset } from "@/features/videos/videoTypes";
 import {
   createCanonicalShareLink,
   createShareLink,
-  assignSingleWebsiteVideo,
   getWebsiteVideos,
   getWebsiteApiErrorMessage,
   getWebsites,
+  updateWebsiteVideoAssignments,
 } from "@/features/websites/websiteApi";
 import {
   getCanonicalErrorMessage,
@@ -51,6 +51,8 @@ import {
 import type {
   CanonicalShareLinkResponse,
   CreateShareLinkResponse,
+  UpdateWebsiteVideoAssignmentsPayload,
+  UpdateWebsiteVideoAssignmentsResponse,
   Website,
 } from "@/features/websites/websiteTypes";
 import { isApiRequestCanceled, normalizeApiError } from "@/lib/api/apiError";
@@ -70,6 +72,7 @@ const DASHBOARD_VIDEO_FILTER_ERROR_MESSAGE =
 
 export function DashboardPage() {
   const canWriteShareLinks = useAdminPermission("shareLink.write");
+  const canManageWebsiteVideos = useAdminPermission("website.write");
   const adminId = useAppSelector((state) => state.auth.admin?.id);
   const cacheScope = adminId ?? "unknown-admin";
   const [websites, setWebsites] = useState<Website[]>([]);
@@ -100,7 +103,7 @@ export function DashboardPage() {
   const [isLoadingMoreVideos, setIsLoadingMoreVideos] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
-  const [isAssigningVideo, setIsAssigningVideo] = useState(false);
+  const [isUpdatingAssignments, setIsUpdatingAssignments] = useState(false);
   const [websiteError, setWebsiteError] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoSearchError, setVideoSearchError] = useState<string | null>(null);
@@ -630,30 +633,47 @@ export function DashboardPage() {
     }
   }
 
-  async function handleAssignVideo(videoId: string): Promise<void> {
-    if (
-      !canWriteShareLinks ||
-      !selectedWebsiteId ||
-      !assignmentSubmissionGateRef.current.tryAcquire()
-    ) {
-      return;
+  async function handleUpdateVideoAssignments(
+    payload: UpdateWebsiteVideoAssignmentsPayload,
+  ): Promise<UpdateWebsiteVideoAssignmentsResponse> {
+    if (!canManageWebsiteVideos || !selectedWebsiteId) {
+      throw new Error("Bạn không có quyền quản lý video của website này.");
     }
-    setIsAssigningVideo(true);
+    if (!assignmentSubmissionGateRef.current.tryAcquire()) {
+      throw new Error("Yêu cầu cập nhật assignment đang được xử lý.");
+    }
+
+    setIsUpdatingAssignments(true);
+    const requestWebsiteId = selectedWebsiteId;
 
     try {
-      await assignSingleWebsiteVideo(selectedWebsiteId, videoId);
-      invalidateDashboardWebsiteVideoCache(cacheScope, selectedWebsiteId);
-      setIsAssignmentDialogOpen(false);
+      const response = await updateWebsiteVideoAssignments(
+        requestWebsiteId,
+        payload,
+      );
+      invalidateDashboardWebsiteVideoCache(cacheScope, requestWebsiteId);
+      const unassignedVideoIdSet = new Set(payload.unassignVideoIds);
+      setSelectedVideoIds((currentVideoIds) =>
+        reconcileSelectionForMode(
+          videoSelectionMode,
+          currentVideoIds.filter(
+            (videoId) => !unassignedVideoIdSet.has(videoId),
+          ),
+        ),
+      );
+      setCreatedShareLink(null);
+      setCanonicalResult(null);
       await loadFirstVideoPage(
         debouncedVideoSearch,
         debouncedVideoFilterKey,
         true,
       );
-      toast.success("Đã gán video cho website.");
-    } catch (assignmentError) {
-      toast.error(getWebsiteApiErrorMessage(assignmentError));
+      toast.success(
+        `Đã cập nhật video cho website: gán thêm ${response.assignedVideoIds.length}, bỏ gán ${response.unassignedVideoIds.length}.`,
+      );
+      return response;
     } finally {
-      setIsAssigningVideo(false);
+      setIsUpdatingAssignments(false);
       assignmentSubmissionGateRef.current.release();
     }
   }
@@ -738,6 +758,7 @@ export function DashboardPage() {
 
       {canWriteShareLinks ? (
         <ShareLinkComposer
+          canManageAssignments={canManageWebsiteVideos}
           hasMoreVideos={hasMoreVideos}
           isLoadingMoreVideos={isLoadingMoreVideos}
           isSubmitting={isSubmitting}
@@ -774,15 +795,14 @@ export function DashboardPage() {
       ) : null}
 
       <AssignWebsiteVideoDialog
-        assignedVideoIds={videos.map((video) => video.id)}
-        isSubmitting={isAssigningVideo}
-        open={canWriteShareLinks && isAssignmentDialogOpen}
-        websiteName={
-          websites.find((website) => website.id === selectedWebsiteId)?.name ??
-          ""
+        canManage={canManageWebsiteVideos}
+        isSubmitting={isUpdatingAssignments}
+        open={canManageWebsiteVideos && isAssignmentDialogOpen}
+        website={
+          websites.find((website) => website.id === selectedWebsiteId) ?? null
         }
-        onAssign={handleAssignVideo}
         onClose={() => setIsAssignmentDialogOpen(false)}
+        onSave={handleUpdateVideoAssignments}
       />
     </section>
   );

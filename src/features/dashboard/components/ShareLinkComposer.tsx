@@ -1,4 +1,4 @@
-import { Link2, Loader2, Search, X } from "lucide-react";
+import { Link2, ListVideo, Loader2, Search, X } from "lucide-react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ type ShareLinkComposerProps = {
   totalVideos: number;
   activeAssignmentTotal: number;
   eligibleAssignmentTotal: number;
+  canManageAssignments: boolean;
   selectedWebsiteId: string;
   selectedVideoIds: string[];
   videoSelectionMode: VideoSelectionMode;
@@ -75,6 +76,7 @@ export function ShareLinkComposer({
   totalVideos,
   activeAssignmentTotal,
   eligibleAssignmentTotal,
+  canManageAssignments,
   selectedWebsiteId,
   selectedVideoIds,
   videoSelectionMode,
@@ -197,6 +199,19 @@ export function ShareLinkComposer({
             websites={filteredWebsites}
             onChange={onWebsiteChange}
           />
+
+          <div className="mt-4 flex justify-end">
+            <Button
+              aria-label="Quản lý video của website đang chọn"
+              disabled={!selectedWebsiteId || !canManageAssignments}
+              type="button"
+              variant="outline"
+              onClick={onOpenAssignment}
+            >
+              <ListVideo className="size-4" />
+              Quản lý video
+            </Button>
+          </div>
 
           {isSelectedWebsiteHidden ? (
             <p className="mt-3 text-sm text-(--admin-text-muted)">
@@ -326,7 +341,6 @@ export function ShareLinkComposer({
             hasSelectedWebsite={Boolean(selectedWebsiteId)}
             videos={videos}
             onLoadMore={onLoadMoreVideos}
-            onOpenAssignment={onOpenAssignment}
             onRetrySearch={onRetryVideoSearch}
             onToggle={onVideoToggle}
           />

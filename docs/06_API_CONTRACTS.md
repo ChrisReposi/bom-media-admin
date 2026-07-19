@@ -247,3 +247,32 @@ Rate-limit responses should be shown with a safe user-facing message:
 ```txt
 Có quá nhiều yêu cầu. Vui lòng chờ một lúc rồi thử lại.
 ```
+
+## Dashboard website-video assignment management
+
+Assignment management is independent from the canonical/review-bundle video
+selection state.
+
+```txt
+GET /api/v1/admin/websites/:websiteId/video-assignment-options
+PATCH /api/v1/admin/websites/:websiteId/video-assignments
+```
+
+The GET response is paginated. `meta.activeAssignedVideoIds` is the
+authoritative full set used to initialize checkboxes, including active
+assignments that are not on the current page or are no longer READY/playable.
+Items include active assignments plus eligible unassigned candidates.
+
+The PATCH body sends one atomic delta:
+
+```json
+{
+  "assignVideoIds": ["video-id"],
+  "unassignVideoIds": ["other-video-id"]
+}
+```
+
+OWNER/ADMIN may save; STAFF is read-only at the API boundary. The client keeps
+`baselineAssignedIds`/`draftAssignedIds` inside the dialog, sends one request,
+then invalidates and reloads the website-scoped shareable-video page. It never
+derives assignment truth from the Dashboard's paginated share-link picker.

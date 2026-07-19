@@ -57,21 +57,31 @@ Use one of: `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, `NOT_APPLICABLE`. Do **not** u
 
 ## D. Dashboard
 
-| #   | Check                                                                            | Result | Evidence |
-| --- | -------------------------------------------------------------------------------- | ------ | -------- |
-| D1  | Initial website + video load                                                     |        |          |
-| D2  | Manual refresh shows success toast when both load, error toast when a load fails |        |          |
-| D3  | One-character search sends **no** API request                                    |        |          |
-| D4  | Valid search returns filtered videos                                             |        |          |
-| D5  | Filter key works                                                                 |        |          |
-| D6  | Load more appends without losing selection                                       |        |          |
-| D7  | Selected video IDs persist across search/filter changes                          |        |          |
-| D8  | Hidden-but-selected videos still counted in "Đã chọn"                            |        |          |
-| D9  | Create button gated until a website + ≥1 video chosen                            |        |          |
-| D10 | Successful share-link creation shows the public URL                              |        |          |
-| D11 | Copy button copies the URL (success/failure toast)                               |        |          |
-| D12 | Website with no active domain behaves safely (no fake URL)                       |        |          |
-| D13 | No raw token/URL persisted (check storage + console)                             |        |          |
+| #   | Check                                                                             | Result | Evidence |
+| --- | --------------------------------------------------------------------------------- | ------ | -------- |
+| D1  | Initial website + video load                                                      |        |          |
+| D2  | Manual refresh shows success toast when both load, error toast when a load fails  |        |          |
+| D3  | One-character search sends **no** API request                                     |        |          |
+| D4  | Valid search returns filtered videos                                              |        |          |
+| D5  | Filter key works                                                                  |        |          |
+| D6  | Load more appends without losing selection                                        |        |          |
+| D7  | Selected video IDs persist across search/filter changes                           |        |          |
+| D8  | Hidden-but-selected videos still counted in "Đã chọn"                             |        |          |
+| D9  | Create button gated until a website + ≥1 video chosen                             |        |          |
+| D10 | Successful share-link creation shows the public URL                               |        |          |
+| D11 | Copy button copies the URL (success/failure toast)                                |        |          |
+| D12 | Website with no active domain behaves safely (no fake URL)                        |        |          |
+| D13 | No raw token/URL persisted (check storage + console)                              |        |          |
+| D14 | Website selection remains one normal click; no double-click action                |        |          |
+| D15 | One visible `Quản lý video` button opens the accessible dialog                    |        |          |
+| D16 | ACTIVE assignments are checked from authoritative API metadata                    |        |          |
+| D17 | Multiple candidates can be checked and assigned in one save                       |        |          |
+| D18 | Assigned videos can be unchecked and unassigned in the same save                  |        |          |
+| D19 | Assigned-but-ineligible video stays visible and can be unassigned                 |        |          |
+| D20 | Search/filter/load-more preserve hidden draft choices                             |        |          |
+| D21 | Closing with changes uses the discard confirmation; cancel sends no PATCH         |        |          |
+| D22 | Failed save keeps the dialog/draft; success reloads website-scoped shareable data |        |          |
+| D23 | Assignment draft never changes canonical/bundle single/multiple selection mode    |        |          |
 
 ## E. Videos list
 

@@ -132,6 +132,40 @@ export type WebsiteVideosListResponse = {
   };
 };
 
+export type WebsiteVideoAssignmentOption = {
+  video: VideoAsset;
+  isAssigned: boolean;
+  assignmentStatus: AssignmentStatus | null;
+  canAssign: boolean;
+  canUnassign: boolean;
+  blockedReason: string | null;
+};
+
+export type WebsiteVideoAssignmentOptionsResponse = {
+  items: WebsiteVideoAssignmentOption[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    activeAssignmentTotal: number;
+    eligibleCandidateTotal: number;
+    activeAssignedVideoIds: string[];
+  };
+};
+
+export type UpdateWebsiteVideoAssignmentsPayload = {
+  assignVideoIds: string[];
+  unassignVideoIds: string[];
+};
+
+export type UpdateWebsiteVideoAssignmentsResponse = {
+  assignedVideoIds: string[];
+  unassignedVideoIds: string[];
+  unchangedVideoIds: string[];
+  activeAssignmentTotal: number;
+};
+
 export type CreateShareLinkPayload = {
   label?: string;
   videoIds?: string[];
